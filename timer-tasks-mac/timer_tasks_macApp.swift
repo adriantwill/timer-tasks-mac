@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 @main
 struct timer_tasks_macApp: App {
@@ -13,5 +14,6 @@ struct timer_tasks_macApp: App {
         WindowGroup {
             ContentView()
         }
+        .modelContainer(for: [Task.self, TriggerMapping.self])
     }
 }
