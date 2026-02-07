@@ -10,7 +10,7 @@ import Foundation
 import SwiftUI
 
 @Model
-class Task {
+class TimerTask {
     var title: String
     var targetTime: TimeInterval?  // nil = no limit
     var elapsedTime: TimeInterval

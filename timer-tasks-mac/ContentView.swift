@@ -12,50 +12,54 @@ internal import Combine
 struct ContentView: View {
 
     @Environment(\.modelContext) var modelContext
-    @Query var tasks: [Task]
+    @Query var tasks: [TimerTask]
     @State var color = Color.red
     @State var title = ""
-    @State var timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-    @State var activeTask: Task?
+    @State var timerManager = TimerManager.shared
     var body: some View {
-        List(tasks) { task in
-            HStack{
-                Circle().fill(Color(red: task.color[0], green: task.color[1], blue: task.color[2])).fixedSize()
-                Text(task.title)
-                Button {
-                    if (activeTask != nil){
-                        activeTask = nil
-                    } else {
-                        activeTask = task
+        VStack {
+            List(tasks) { task in
+                HStack{
+                    Circle().fill(Color(red: task.color[0], green: task.color[1], blue: task.color[2])).fixedSize()
+                    Text(task.title)
+                    Button {
+                        if (timerManager.activeTask == task){
+                            timerManager.stop()
+                        } else {
+                            timerManager.start(task: task)
+                        }
+                    } label: {
+                        Image(systemName: timerManager.activeTask == task ? "pause.circle" : "play.circle")
                     }
-                } label: {
-                    Label("", systemImage: "play.circle")
+
+                    Text(Duration.seconds(task.elapsedTime).formatted(.time(pattern: .hourMinuteSecond)))
+                        .monospacedDigit()
+                    Button("", systemImage: "trash", action: {
+                        modelContext.delete(task)
+                    })
                 }
-
-                Text(String(describing: Duration.seconds(task.elapsedTime)))
-                Button("", systemImage: "trash", action: {
-                    modelContext.delete(task)
-                })
+            }
+            TextField("Add Text here", text: $title)
+            ColorPicker("Pick color", selection: $color)
+            Button("Add Task"){
+                let nsColor = NSColor(color).usingColorSpace(.sRGB)!
+                let new_task = TimerTask(title: title, color: [nsColor.redComponent, nsColor.greenComponent, nsColor.blueComponent])
+                modelContext.insert(new_task)
+                title = ""
+                color = Color.white
             }
         }
-        .onReceive(timer) { _ in
-            if let active = activeTask {
-                active.elapsedTime += 1
-            }
+        .padding()
+        .task {
+            AppMonitor.shared.startMonitoring()
         }
-        TextField("Add Text here", text: $title)
-        ColorPicker("Pick color", selection: $color)
-        Button("Add Task"){
-            let nsColor = NSColor(color).usingColorSpace(.sRGB)!
-            let new_task = Task(title: title, color: [nsColor.redComponent, nsColor.greenComponent, nsColor.blueComponent])
-            modelContext.insert(new_task)
-            title = ""
-            color = Color.white
+        .onAppear {
+            AppMonitor.shared.configure(modelContext: modelContext)
+            AppMonitor.shared.startMonitoring()
         }
-        
     }
-
 }
+
 
 
 #Preview {
