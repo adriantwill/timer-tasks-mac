@@ -13,11 +13,8 @@ struct timer_tasks_macApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .task {
-                    AppMonitor.shared.startMonitoring()
-                }
         }
-        .modelContainer(for: [TimerTask.self, TriggerMapping.self])
+        .modelContainer(for: [TimerTask.self, TaskTrigger.self])
         .environment(TimerManager())
     }
 }

@@ -5,9 +5,10 @@
 //  Created by Adrian Will on 2/1/26.
 //
 
-import SwiftUI
+import AppKit
 import SwiftData
-internal import Combine
+import SwiftUI
+internal import UniformTypeIdentifiers
 
 struct ContentView: View {
 
@@ -16,52 +17,257 @@ struct ContentView: View {
     @State var color = Color.red
     @State var title = ""
     @State var timerManager = TimerManager.shared
+    @State private var expandedTaskId: UUID? = nil
+    @State private var showWindowPicker = false
+    @State private var windowTitles: [String] = []
+    @State private var pendingBundleId: String?
+    @State private var pendingTask: TimerTask?
+    @State private var errorMessage: String?
+    @State private var showError = false
     var body: some View {
         VStack {
-            List(tasks) { task in
-                HStack{
-                    Circle().fill(Color(red: task.color[0], green: task.color[1], blue: task.color[2])).fixedSize()
-                    Text(task.title)
-                    Button {
-                        if (timerManager.activeTask == task){
-                            timerManager.stop()
-                        } else {
-                            timerManager.start(task: task)
-                        }
-                    } label: {
-                        Image(systemName: timerManager.activeTask == task ? "pause.circle" : "play.circle")
-                    }
-
-                    Text(Duration.seconds(task.elapsedTime).formatted(.time(pattern: .hourMinuteSecond)))
-                        .monospacedDigit()
-                    Button("", systemImage: "trash", action: {
-                        modelContext.delete(task)
-                    })
-                }
-            }
-            TextField("Add Text here", text: $title)
-            ColorPicker("Pick color", selection: $color)
-            Button("Add Task"){
-                let nsColor = NSColor(color).usingColorSpace(.sRGB)!
-                let new_task = TimerTask(title: title, color: [nsColor.redComponent, nsColor.greenComponent, nsColor.blueComponent])
-                modelContext.insert(new_task)
-                title = ""
-                color = Color.white
-            }
+            taskList
+            addTaskSection
         }
         .padding()
-        .task {
-            AppMonitor.shared.startMonitoring()
-        }
         .onAppear {
             AppMonitor.shared.configure(modelContext: modelContext)
             AppMonitor.shared.startMonitoring()
         }
+        .confirmationDialog(
+            "Select Window",
+            isPresented: $showWindowPicker,
+            titleVisibility: .visible
+        ) {
+            ForEach(windowTitles, id: \.self) { title in
+                Button(title) {
+                    if let pendingTask = pendingTask, let pendingBundleId = pendingBundleId {
+                        let trigger = TaskTrigger(
+                            bundleId: pendingBundleId,
+                            task: pendingTask,
+                            title: title
+                        )
+                        pendingTask.triggers.append(trigger)
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        .alert("Error", isPresented: $showError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "Unknown error")
+        }
+    }
+    
+    private var taskList: some View {
+        List(tasks) { task in
+            DisclosureGroup(
+                isExpanded: disclosureBinding(for: task)
+            ) {
+                triggerList(for: task)
+            } label: {
+                taskRowHeader(task: task)
+            }
+        }
+    }
+    
+    private func disclosureBinding(for task: TimerTask) -> Binding<Bool> {
+        Binding(
+            get: { expandedTaskId == task.id },
+            set: { expandedTaskId = $0 ? task.id : nil }
+        )
+    }
+    
+    private func triggerList(for task: TimerTask) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(task.triggers) { trigger in
+                HStack {
+                    Text(trigger.bundleId)
+                    if let title = trigger.title {
+                        Text(title)
+                    }
+                    Spacer()
+                    Button("", systemImage: "xmark.circle.fill") {
+                        modelContext.delete(trigger)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(.leading, 20)
+    }
+    
+    private func taskRowHeader(task: TimerTask) -> some View {
+        HStack {
+            Circle().fill(
+                Color(
+                    red: task.color[0],
+                    green: task.color[1],
+                    blue: task.color[2]
+                )
+            ).fixedSize()
+            Text(task.title)
+            Button {
+                toggleTimer(for: task)
+            } label: {
+                Image(
+                    systemName: timerManager.activeTask == task
+                        ? "pause.circle" : "play.circle"
+                )
+            }
+            .buttonStyle(.plain)
+            Text(
+                Duration.seconds(task.elapsedTime).formatted(
+                    .time(pattern: .hourMinuteSecond)
+                )
+            )
+            .monospacedDigit()
+            Button(
+                "",
+                systemImage: "app",
+                action: { addAppTrigger(to: task) }
+            )
+            Button("", systemImage: "plus.app") {
+                addWindowTrigger(to: task)
+            }
+            Button(
+                "",
+                systemImage: "trash",
+                action: { modelContext.delete(task) }
+            )
+            .buttonStyle(.plain)
+        }
+    }
+    
+    private func toggleTimer(for task: TimerTask) {
+        if timerManager.activeTask == task {
+            timerManager.stop()
+        } else {
+            timerManager.start(task: task)
+        }
+    }
+    
+    private func addAppTrigger(to task: TimerTask) {
+        let panel = NSOpenPanel()
+        panel.directoryURL = URL(
+            fileURLWithPath: "/Applications",
+            isDirectory: true
+        )
+        panel.allowedContentTypes = [.application]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        if panel.runModal() == .OK {
+            if let url = panel.url {
+                if let bundle = Bundle(url: url),
+                    let id = bundle.bundleIdentifier
+                {
+                    print("Selected App ID: \(id)")
+                    task.triggers
+                        .append(
+                            TaskTrigger(
+                                bundleId: id,
+                                task: task
+                            )
+                        )
+                }
+            }
+        }
+    }
+    
+    private func addWindowTrigger(to task: TimerTask) {
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        if !AXIsProcessTrustedWithOptions(options) {
+            errorMessage = "Accessibility permission is required to detect window titles. Please grant permission in System Settings."
+            showError = true
+            return
+        }
+        
+        let panel = NSOpenPanel()
+        panel.directoryURL = URL(
+            fileURLWithPath: "/Applications",
+            isDirectory: true
+        )
+        panel.allowedContentTypes = [.application]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        if panel.runModal() == .OK {
+            if let url = panel.url {
+                if let bundle = Bundle(url: url),
+                   let bid = bundle.bundleIdentifier {
+                    print("Selected bundle ID: \(bid)")
+                    let runningApps = NSWorkspace.shared.runningApplications
+                    if let app = runningApps.first(where: { $0.bundleIdentifier == bid}) {
+                        let pid = app.processIdentifier
+                        let appElement = AXUIElementCreateApplication(pid)
+                        var windows: AnyObject?
+                        
+                        AXUIElementCopyAttributeValue(
+                            appElement,
+                            kAXWindowsAttribute as CFString,
+                            &windows
+                        )
+                        
+                        pendingBundleId = bid
+                        pendingTask = task
+                        windowTitles.removeAll()
+                        
+                        if let windowArray = windows as? [AXUIElement] {
+                            for window in windowArray {
+                                var title: AnyObject?
+                                AXUIElementCopyAttributeValue(
+                                    window,
+                                    kAXTitleAttribute as CFString,
+                                    &title
+                                )
+                                if let windowTitle = title as? String {
+                                    windowTitles.append(windowTitle)
+                                }
+                            }
+                        }
+                        
+                        showWindowPicker = true
+                        print("Found \(windowTitles.count) windows, showing picker")
+                    } else {
+                        print("App not running: \(bid)")
+                    }
+                }
+            }
+        }
+    }
+    
+    private var addTaskSection: some View {
+        VStack {
+            TextField("Add Text here", text: $title)
+            ColorPicker("Pick color", selection: $color)
+            Button("Add Task") {
+                let nsColor = NSColor(color).usingColorSpace(.sRGB)!
+                let new_task = TimerTask(
+                    title: title,
+                    color: [
+                        nsColor.redComponent, nsColor.greenComponent,
+                        nsColor.blueComponent,
+                    ]
+                )
+                modelContext.insert(new_task)
+                title = ""
+                color = Color.black
+            }
+        }
     }
 }
 
-
-
 #Preview {
-    ContentView()
+    let config = ModelConfiguration(isStoredInMemoryOnly: true)
+    let container = try! ModelContainer(for: TimerTask.self, TaskTrigger.self, configurations: config)
+
+    // Add sample data so the list isn't empty
+    let task = TimerTask(title: "Design App", color: [0.0, 0.5, 1.0])
+    container.mainContext.insert(task)
+
+    return ContentView()
+        .modelContainer(container)
 }
+

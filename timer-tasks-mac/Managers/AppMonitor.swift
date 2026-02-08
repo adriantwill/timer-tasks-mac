@@ -26,27 +26,51 @@ class AppMonitor {
         )
     }
     @objc func appDidActivate(_ notification: Notification) {
-        guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
-        print("Switched to app: \(app.localizedName ?? "Unknown") (\(app.bundleIdentifier ?? "No ID"))")
-        let bundleId = app.bundleIdentifier, context = modelContext
-        let descriptor = FetchDescriptor<TriggerMapping>()
-        guard let mappings = try? context?.fetch(descriptor) else { return }
-        if let match = mappings.first(where: { mapping in
-            mapping.patternType == .app && mapping.pattern == bundleId
-        }) {
-            print(
-                "Found trigger for app: \(String(describing: bundleId)) -> Task: \(match.taskTitle)"
+        guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+              let bundleId = app.bundleIdentifier,
+              let context = modelContext else { return }
+        var windowTitle: String?
+        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        var focusedWindow: AnyObject?
+        let result = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindow)
+        if result == .success {
+            print(focusedWindow ?? "No focused window")
+            var title: AnyObject?
+            let result2 = AXUIElementCopyAttributeValue(
+                focusedWindow as! AXUIElement,
+                kAXTitleAttribute as CFString,
+                &title
             )
-
-            // 3. Find the Task object
-            let taskDescriptor = FetchDescriptor<TimerTask>(
-                predicate: #Predicate { $0.title == match.taskTitle }
-            )
-
-            if let task = try? context?.fetch(taskDescriptor).first {
-                // 4. Start the timer!
-                TimerManager.shared.start(task: task)
+            if result2 == .success {
+                print(title ?? "String")
+                windowTitle = title as? String
             }
+        }
+
+
+        print(
+            "Switched to app: \(app.localizedName ?? "Unknown") (\(bundleId)) \(windowTitle ?? "Random")"
+        )
+
+        let descriptor = FetchDescriptor<TimerTask>()
+        guard let tasks = try? context.fetch(descriptor) else { return }
+
+        let match = tasks.first { task in
+            task.triggers.contains { (trigger: TaskTrigger) in
+                if trigger.title == nil {
+                    return trigger.bundleId == bundleId
+                } else {
+                    guard let currentTitle = windowTitle, let triggerTitle = trigger.title else { return false }
+                    return currentTitle.localizedCaseInsensitiveContains(triggerTitle)
+                }
+            }
+        }
+
+        if let match {
+            print("Found trigger: \(match.title)")
+            TimerManager.shared.start(task: match)
+        } else {
+            TimerManager.shared.stop()
         }
     }
 }
