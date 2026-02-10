@@ -14,8 +14,8 @@ struct ContentView: View {
 
     @Environment(\.modelContext) var modelContext
     @Query var tasks: [TimerTask]
-    @State var color = Color.red
-    @State var title = ""
+    @State var taskTitle = "New Task"
+    @State var categoryTitle = "New Category"
     @State var timerManager = TimerManager.shared
     @State private var expandedTaskId: UUID? = nil
     @State private var showWindowPicker = false
@@ -24,10 +24,14 @@ struct ContentView: View {
     @State private var pendingTask: TimerTask?
     @State private var errorMessage: String?
     @State private var showError = false
+    @State private var color: Color = .red
+    @State private var selectedCategory: Category?
+    @Query var categories: [Category]
     var body: some View {
         VStack {
             taskList
             addTaskSection
+            addCategorySection
         }
         .padding()
         .onAppear {
@@ -102,9 +106,9 @@ struct ContentView: View {
         HStack {
             Circle().fill(
                 Color(
-                    red: task.color[0],
-                    green: task.color[1],
-                    blue: task.color[2]
+                    red: task.category?.color[0] ?? 0.5,
+                    green: task.category?.color[1] ?? 0.5,
+                    blue: task.category?.color[2] ?? 0.5
                 )
             ).fixedSize()
             Text(task.title)
@@ -237,23 +241,57 @@ struct ContentView: View {
             }
         }
     }
-    
+    private var addCategorySection: some View {
+        VStack {
+            TextField("Add Text here", text: $categoryTitle)
+            ColorPicker("Pick color", selection: $color)
+            Button("Add Category") {
+                let nsColor = NSColor(color).usingColorSpace(.sRGB)!
+                let new_category = Category(name: categoryTitle, color: [
+                    Double(nsColor.redComponent),
+                    Double(nsColor.greenComponent),
+                    Double(nsColor.blueComponent)
+                ])
+                modelContext.insert(new_category)
+                categoryTitle = ""
+                color = Color.black
+            }
+        }
+    }
+
+
     private var addTaskSection: some View {
         VStack {
-            TextField("Add Text here", text: $title)
-            ColorPicker("Pick color", selection: $color)
+            TextField("Add Text here", text: $taskTitle)
+            Picker("Category", selection: $selectedCategory) {
+                Text("Select Category").tag(nil as Category?) // Placeholder
+                ForEach(categories) { category in
+                    HStack {
+                        Circle()
+                            .fill(
+                                Color(
+                                    red: category.color[0],
+                                    green: category.color[1],
+                                    blue: category.color[2]
+                                )
+                            )
+                            .frame(width: 10)
+                        Text(category.name)
+
+
+                    }
+                    .tag(category as Category?) // Important: Tag must match selection type
+                }
+            }
+            .labelsHidden() // Hides the label if you just want the dropdown
             Button("Add Task") {
-                let nsColor = NSColor(color).usingColorSpace(.sRGB)!
                 let new_task = TimerTask(
-                    title: title,
-                    color: [
-                        nsColor.redComponent, nsColor.greenComponent,
-                        nsColor.blueComponent,
-                    ]
+                    title: taskTitle,
+                    category: selectedCategory
+
                 )
                 modelContext.insert(new_task)
-                title = ""
-                color = Color.black
+                taskTitle = ""
             }
         }
     }
@@ -261,10 +299,10 @@ struct ContentView: View {
 
 #Preview {
     let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(for: TimerTask.self, TaskTrigger.self, configurations: config)
+    let container = try! ModelContainer(for: TimerTask.self, TaskTrigger.self, Category.self, configurations: config)
 
     // Add sample data so the list isn't empty
-    let task = TimerTask(title: "Design App", color: [0.0, 0.5, 1.0])
+    let task = TimerTask(title: "Design App")
     container.mainContext.insert(task)
 
     return ContentView()

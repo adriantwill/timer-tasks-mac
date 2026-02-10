@@ -14,7 +14,6 @@ struct timer_tasks_macApp: App {
         WindowGroup {
             ContentView()
         }
-        .modelContainer(for: [TimerTask.self, TaskTrigger.self])
-        .environment(TimerManager())
+        .modelContainer(for: [TimerTask.self, TaskTrigger.self, Category.self])
     }
 }

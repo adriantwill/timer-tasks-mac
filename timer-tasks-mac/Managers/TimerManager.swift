@@ -13,6 +13,7 @@ class TimerManager{
     static let shared = TimerManager()
     var activeTask: TimerTask?
     var timer: Timer?
+    
     func start(task: TimerTask){
         self.activeTask = task
         timer?.invalidate()

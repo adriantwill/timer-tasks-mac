@@ -10,31 +10,25 @@ import SwiftData
 
 class AppMonitor {
     static let shared = AppMonitor()
-    private init () {}
+    private init() {}
     var modelContext: ModelContext?
+    var lastKnownTitle = ""
+    var lastKnownApp = ""
+    var pollingTimer: Timer?
 
     func configure(modelContext: ModelContext) {
         self.modelContext = modelContext
     }
 
-    func startMonitoring(){
-        NSWorkspace.shared.notificationCenter.addObserver(
-            self,
-            selector: #selector(appDidActivate),
-            name: NSWorkspace.didActivateApplicationNotification,
-            object: nil
-        )
-    }
-    @objc func appDidActivate(_ notification: Notification) {
-        guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-              let bundleId = app.bundleIdentifier,
-              let context = modelContext else { return }
-        var windowTitle: String?
+    func getWindowTitle(app: NSRunningApplication) -> String? {
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
         var focusedWindow: AnyObject?
-        let result = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindow)
+        let result = AXUIElementCopyAttributeValue(
+            appElement,
+            kAXFocusedWindowAttribute as CFString,
+            &focusedWindow
+        )
         if result == .success {
-            print(focusedWindow ?? "No focused window")
             var title: AnyObject?
             let result2 = AXUIElementCopyAttributeValue(
                 focusedWindow as! AXUIElement,
@@ -42,16 +36,45 @@ class AppMonitor {
                 &title
             )
             if result2 == .success {
-                print(title ?? "String")
-                windowTitle = title as? String
+                return title as? String
             }
         }
+        return nil
+    }
 
-
-        print(
-            "Switched to app: \(app.localizedName ?? "Unknown") (\(bundleId)) \(windowTitle ?? "Random")"
+    func startMonitoring() {
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(appDidActivate),
+            name: NSWorkspace.didActivateApplicationNotification,
+            object: nil
         )
+        self.pollingTimer = Timer.scheduledTimer(
+            withTimeInterval: 1.0,
+            repeats: true
+        ) { _ in
+            // Your polling logic here (e.g., API call)
 
+            guard let app = NSWorkspace.shared.frontmostApplication,
+                let bundleId = app.bundleIdentifier
+            else { return }
+            let windowTitle = self.getWindowTitle(app: app)
+            if windowTitle != self.lastKnownTitle
+                || self.lastKnownApp != bundleId
+            {
+                self.appDidActivate(
+                    nil
+                )
+            }
+
+        }
+    }
+    @objc func appDidActivate(_ notification: Notification?) {
+        guard let app = NSWorkspace.shared.frontmostApplication,
+            let bundleId = app.bundleIdentifier,
+            let context = modelContext
+        else { return }
+        let windowTitle = getWindowTitle(app: app)
         let descriptor = FetchDescriptor<TimerTask>()
         guard let tasks = try? context.fetch(descriptor) else { return }
 
@@ -60,17 +83,22 @@ class AppMonitor {
                 if trigger.title == nil {
                     return trigger.bundleId == bundleId
                 } else {
-                    guard let currentTitle = windowTitle, let triggerTitle = trigger.title else { return false }
-                    return currentTitle.localizedCaseInsensitiveContains(triggerTitle)
+                    guard let currentTitle = windowTitle,
+                        let triggerTitle = trigger.title
+                    else { return false }
+                    return currentTitle.localizedCaseInsensitiveContains(
+                        triggerTitle
+                    )
                 }
             }
         }
 
         if let match {
-            print("Found trigger: \(match.title)")
             TimerManager.shared.start(task: match)
         } else {
             TimerManager.shared.stop()
         }
+        self.lastKnownTitle = windowTitle ?? ""
+        self.lastKnownApp = bundleId
     }
 }

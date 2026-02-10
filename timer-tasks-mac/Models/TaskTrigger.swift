@@ -8,7 +8,7 @@ import SwiftData
 import Foundation
 
 @Model
-class TaskTrigger: Identifiable{
+class TaskTrigger: Identifiable {
     var id: UUID = UUID()
     var bundleId: String
     var task: TimerTask

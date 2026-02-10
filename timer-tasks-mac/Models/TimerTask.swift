@@ -5,27 +5,33 @@
 //  Created by Adrian Will on 2/1/26.
 //
 
-import SwiftData
 import Foundation
+import SwiftData
 import SwiftUI
 
 @Model
 class TimerTask {
-    var id: UUID = UUID() 
+    var id: UUID = UUID()
     var title: String
     var targetTime: TimeInterval?  // nil = no limit
     var elapsedTime: TimeInterval
-    var color: [Double]  // expects three elements representing the color components
     var isManualComplete: Bool
+    var category: Category?
+    var createdAt: Date = Date()
+    var updatedAt: Date?
     @Relationship(deleteRule: .cascade, inverse: \TaskTrigger.task)
     var triggers: [TaskTrigger] = []
-    init(title: String, targetTime: TimeInterval? = nil, color: [Double], triggers: [TaskTrigger] = []) {
+    init(
+        title: String,
+        targetTime: TimeInterval? = nil,
+        triggers: [TaskTrigger] = [],
+        category: Category? = nil
+    ) {
         self.title = title
         self.targetTime = targetTime
         self.elapsedTime = 0
-        self.color = color
         self.isManualComplete = false
         self.triggers = triggers
+        self.category = category
     }
 }
-
