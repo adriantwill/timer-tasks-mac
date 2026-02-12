@@ -13,6 +13,7 @@ internal import UniformTypeIdentifiers
 struct ContentView: View {
 
     @Environment(\.modelContext) var modelContext
+    @Environment(\.scenePhase) var scenePhase
     @Query var tasks: [TimerTask]
     @State var taskTitle = "New Task"
     @State var categoryTitle = "New Category"
@@ -26,17 +27,49 @@ struct ContentView: View {
     @State private var showError = false
     @State private var color: Color = .red
     @State private var selectedCategory: Category?
+    @State private var editingTriggerId: UUID? = nil
+    @State private var editedTitle = ""
     @Query var categories: [Category]
     var body: some View {
         VStack {
-            taskList
-            addTaskSection
-            addCategorySection
+            TaskListView(
+                tasks: tasks,
+                expandedTaskId: $expandedTaskId,
+                editingTriggerId: $editingTriggerId,
+                editedTitle: $editedTitle,
+                timerManager: timerManager,
+                onToggleTimer: toggleTimer,
+                onAddAppTrigger: addAppTrigger,
+                onAddWindowTrigger: addWindowTrigger,
+                onDeleteTask: { modelContext.delete($0) },
+                onDeleteTrigger: { modelContext.delete($0) }
+            )
+            AddTaskSectionView(
+                taskTitle: $taskTitle,
+                selectedCategory: $selectedCategory,
+                categories: categories,
+                isAddDisabled: !isValidTaskTitle(taskTitle),
+                onAddTask: addTask
+            )
+            AddCategorySectionView(
+                categoryTitle: $categoryTitle,
+                color: $color,
+                onAddCategory: addCategory
+            )
         }
         .padding()
         .onAppear {
             AppMonitor.shared.configure(modelContext: modelContext)
+            if !AppMonitor.shared.checkAccessibilityPermission() {
+                errorMessage = "Accessibility permission is required for automatic tracking."
+                showError = true
+            }
             AppMonitor.shared.startMonitoring()
+        }
+        .onChange(of: scenePhase) { oldPhase, newPhase in
+            if newPhase == .background || newPhase == .inactive {
+                try? modelContext.save()
+            }
         }
         .confirmationDialog(
             "Select Window",
@@ -61,86 +94,6 @@ struct ContentView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(errorMessage ?? "Unknown error")
-        }
-    }
-    
-    private var taskList: some View {
-        List(tasks) { task in
-            DisclosureGroup(
-                isExpanded: disclosureBinding(for: task)
-            ) {
-                triggerList(for: task)
-            } label: {
-                taskRowHeader(task: task)
-            }
-        }
-    }
-    
-    private func disclosureBinding(for task: TimerTask) -> Binding<Bool> {
-        Binding(
-            get: { expandedTaskId == task.id },
-            set: { expandedTaskId = $0 ? task.id : nil }
-        )
-    }
-    
-    private func triggerList(for task: TimerTask) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(task.triggers) { trigger in
-                HStack {
-                    Text(trigger.bundleId)
-                    if let title = trigger.title {
-                        Text(title)
-                    }
-                    Spacer()
-                    Button("", systemImage: "xmark.circle.fill") {
-                        modelContext.delete(trigger)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .padding(.leading, 20)
-    }
-    
-    private func taskRowHeader(task: TimerTask) -> some View {
-        HStack {
-            Circle().fill(
-                Color(
-                    red: task.category?.color[0] ?? 0.5,
-                    green: task.category?.color[1] ?? 0.5,
-                    blue: task.category?.color[2] ?? 0.5
-                )
-            ).fixedSize()
-            Text(task.title)
-            Button {
-                toggleTimer(for: task)
-            } label: {
-                Image(
-                    systemName: timerManager.activeTask == task
-                        ? "pause.circle" : "play.circle"
-                )
-            }
-            .buttonStyle(.plain)
-            Text(
-                Duration.seconds(task.elapsedTime).formatted(
-                    .time(pattern: .hourMinuteSecond)
-                )
-            )
-            .monospacedDigit()
-            Button(
-                "",
-                systemImage: "app",
-                action: { addAppTrigger(to: task) }
-            )
-            Button("", systemImage: "plus.app") {
-                addWindowTrigger(to: task)
-            }
-            Button(
-                "",
-                systemImage: "trash",
-                action: { modelContext.delete(task) }
-            )
-            .buttonStyle(.plain)
         }
     }
     
@@ -241,71 +194,76 @@ struct ContentView: View {
             }
         }
     }
-    private var addCategorySection: some View {
-        VStack {
-            TextField("Add Text here", text: $categoryTitle)
-            ColorPicker("Pick color", selection: $color)
-            Button("Add Category") {
-                let nsColor = NSColor(color).usingColorSpace(.sRGB)!
-                let new_category = Category(name: categoryTitle, color: [
-                    Double(nsColor.redComponent),
-                    Double(nsColor.greenComponent),
-                    Double(nsColor.blueComponent)
-                ])
-                modelContext.insert(new_category)
-                categoryTitle = ""
-                color = Color.black
-            }
-        }
+    private func addCategory() {
+        let nsColor = NSColor(color).usingColorSpace(.sRGB)!
+        let newCategory = Category(name: categoryTitle, color: [
+            Double(nsColor.redComponent),
+            Double(nsColor.greenComponent),
+            Double(nsColor.blueComponent)
+        ])
+        modelContext.insert(newCategory)
+        categoryTitle = ""
+        color = Color.black
     }
 
+    private func isValidTaskTitle(_ title: String) -> Bool {
+        return title.trimmingCharacters(in: .whitespacesAndNewlines).count > 0
+    }
 
-    private var addTaskSection: some View {
-        VStack {
-            TextField("Add Text here", text: $taskTitle)
-            Picker("Category", selection: $selectedCategory) {
-                Text("Select Category").tag(nil as Category?) // Placeholder
-                ForEach(categories) { category in
-                    HStack {
-                        Circle()
-                            .fill(
-                                Color(
-                                    red: category.color[0],
-                                    green: category.color[1],
-                                    blue: category.color[2]
-                                )
-                            )
-                            .frame(width: 10)
-                        Text(category.name)
+    private func addTask() {
+        let trimmedTitle = taskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else { return }
 
+        // Use selected category or default/uncategorized
+        let category = selectedCategory ?? getOrCreateDefaultCategory()
 
-                    }
-                    .tag(category as Category?) // Important: Tag must match selection type
-                }
-            }
-            .labelsHidden() // Hides the label if you just want the dropdown
-            Button("Add Task") {
-                let new_task = TimerTask(
-                    title: taskTitle,
-                    category: selectedCategory
+        let new_task = TimerTask(
+            title: trimmedTitle,
+            category: category
 
-                )
-                modelContext.insert(new_task)
-                taskTitle = ""
-            }
+        )
+        modelContext.insert(new_task)
+        taskTitle = ""
+    }
+
+    private func getOrCreateDefaultCategory() -> Category {
+        // Look for existing "Uncategorized" category
+        if let defaultCat = categories.first(where: { $0.name == "Uncategorized" }) {
+            return defaultCat
         }
+
+        // Create default category
+        let defaultCategory = Category(
+            name: "Uncategorized",
+            color: [0.5, 0.5, 0.5] // Gray
+        )
+        modelContext.insert(defaultCategory)
+        return defaultCategory
     }
 }
 
 #Preview {
     let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(for: TimerTask.self, TaskTrigger.self, Category.self, configurations: config)
+    let container = try! ModelContainer(
+        for: TimerTask.self,
+        TaskTrigger.self,
+        Category.self,
+        configurations: config
+    )
 
-    // Add sample data so the list isn't empty
-    let task = TimerTask(title: "Design App")
+    let category = Category(name: "Work", color: [0.16, 0.43, 0.94])
+    let task = TimerTask(title: "Design App", category: category)
+    task.elapsedTime = 5400
+
+    let trigger = TaskTrigger(
+        bundleId: "com.microsoft.VSCode",
+        task: task
+    )
+    task.triggers.append(trigger)
+
+    container.mainContext.insert(category)
     container.mainContext.insert(task)
 
     return ContentView()
         .modelContainer(container)
 }
-

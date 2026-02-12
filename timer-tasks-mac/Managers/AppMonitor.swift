@@ -15,9 +15,17 @@ class AppMonitor {
     var lastKnownTitle = ""
     var lastKnownApp = ""
     var pollingTimer: Timer?
+    private var isMonitoring = false
 
     func configure(modelContext: ModelContext) {
         self.modelContext = modelContext
+    }
+
+    func checkAccessibilityPermission() -> Bool {
+        let options =
+            [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
+            as CFDictionary
+        return AXIsProcessTrustedWithOptions(options)
     }
 
     func getWindowTitle(app: NSRunningApplication) -> String? {
@@ -43,6 +51,8 @@ class AppMonitor {
     }
 
     func startMonitoring() {
+        guard !isMonitoring else { return }
+        isMonitoring = true
         NSWorkspace.shared.notificationCenter.addObserver(
             self,
             selector: #selector(appDidActivate),
