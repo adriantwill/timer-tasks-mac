@@ -88,18 +88,28 @@ class AppMonitor {
         let descriptor = FetchDescriptor<TimerTask>()
         guard let tasks = try? context.fetch(descriptor) else { return }
 
+        let active = TimerManager.shared.activeTask
         let match = tasks.first { task in
             task.triggers.contains { (trigger: TaskTrigger) in
+                let isPreviousActiveOk = !trigger.previousActive || active?.id == task.id
                 if trigger.title == nil {
-                    return trigger.bundleId == bundleId
-                } else {
+                    return trigger.bundleId == bundleId && isPreviousActiveOk
+                } else if trigger.bundleId==bundleId{
                     guard let currentTitle = windowTitle,
                         let triggerTitle = trigger.title
                     else { return false }
-                    return currentTitle.localizedCaseInsensitiveContains(
+                    if trigger.isExactTitleMatch {
+                        return isPreviousActiveOk && currentTitle
+                            .localizedCaseInsensitiveCompare(
+                            triggerTitle
+                        ) == .orderedSame
+                    }
+                    return isPreviousActiveOk && currentTitle
+                        .localizedCaseInsensitiveContains(
                         triggerTitle
                     )
                 }
+                return false
             }
         }
 
