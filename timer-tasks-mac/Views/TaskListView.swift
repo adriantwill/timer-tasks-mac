@@ -12,6 +12,7 @@ struct TaskListView: View {
     let onAddWindowTrigger: (TimerTask) -> Void
     let onDeleteTask: (TimerTask) -> Void
     let onDeleteTrigger: (TaskTrigger) -> Void
+    let onChangePriority: (TimerTask, Int) -> Void
 
     var body: some View {
         List(tasks) { task in
@@ -27,11 +28,13 @@ struct TaskListView: View {
             } label: {
                 TaskRowHeaderView(
                     task: task,
+                    taskCount: tasks.count,
                     timerManager: timerManager,
                     onToggleTimer: onToggleTimer,
                     onAddAppTrigger: onAddAppTrigger,
                     onAddWindowTrigger: onAddWindowTrigger,
-                    onDeleteTask: onDeleteTask
+                    onDeleteTask: onDeleteTask,
+                    onChangePriority: onChangePriority
                 )
             }
         }

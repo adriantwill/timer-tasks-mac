@@ -13,6 +13,7 @@ import SwiftUI
 class TimerTask {
     var id: UUID = UUID()
     var title: String
+    var priority: Int = 0
     var targetTime: TimeInterval?  // nil = no limit
     var elapsedTime: TimeInterval
     var isManualComplete: Bool
@@ -23,11 +24,13 @@ class TimerTask {
     var triggers: [TaskTrigger] = []
     init(
         title: String,
+        priority: Int = 0,
         targetTime: TimeInterval? = nil,
         triggers: [TaskTrigger] = [],
         category: Category? = nil
     ) {
         self.title = title
+        self.priority = priority
         self.targetTime = targetTime
         self.elapsedTime = 0
         self.isManualComplete = false

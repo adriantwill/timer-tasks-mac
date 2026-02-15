@@ -14,7 +14,7 @@ struct ContentView: View {
 
     @Environment(\.modelContext) var modelContext
     @Environment(\.scenePhase) var scenePhase
-    @Query var tasks: [TimerTask]
+    @Query(sort: \TimerTask.priority) var tasks: [TimerTask]
     @State var taskTitle = "New Task"
     @State var categoryTitle = "New Category"
     @State var timerManager = TimerManager.shared
@@ -42,7 +42,8 @@ struct ContentView: View {
                 onAddAppTrigger: addAppTrigger,
                 onAddWindowTrigger: addWindowTrigger,
                 onDeleteTask: { modelContext.delete($0) },
-                onDeleteTrigger: { modelContext.delete($0) }
+                onDeleteTrigger: { modelContext.delete($0) },
+                onChangePriority: changePriority
             )
             AddTaskSectionView(
                 taskTitle: $taskTitle,
@@ -216,9 +217,11 @@ struct ContentView: View {
 
         // Use selected category or default/uncategorized
         let category = selectedCategory ?? getOrCreateDefaultCategory()
+        let nextPriority = (tasks.map { $0.priority }.max() ?? -1) + 1
 
         let new_task = TimerTask(
             title: trimmedTitle,
+            priority: nextPriority,
             category: category
 
         )
@@ -239,6 +242,22 @@ struct ContentView: View {
         )
         modelContext.insert(defaultCategory)
         return defaultCategory
+    }
+
+    private func changePriority(for task: TimerTask, to newPriority: Int) {
+        guard tasks.count > 1 else {
+            task.priority = 0
+            return
+        }
+        let clamped = min(max(newPriority, 0), tasks.count - 1)
+        var reordered = tasks.sorted { $0.priority < $1.priority }
+        if let index = reordered.firstIndex(where: { $0.id == task.id }) {
+            let item = reordered.remove(at: index)
+            reordered.insert(item, at: clamped)
+            for (idx, item) in reordered.enumerated() {
+                item.priority = idx
+            }
+        }
     }
 }
 

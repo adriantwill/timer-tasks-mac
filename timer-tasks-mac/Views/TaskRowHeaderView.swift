@@ -3,11 +3,13 @@ import SwiftUI
 
 struct TaskRowHeaderView: View {
     let task: TimerTask
+    let taskCount: Int
     let timerManager: TimerManager
     let onToggleTimer: (TimerTask) -> Void
     let onAddAppTrigger: (TimerTask) -> Void
     let onAddWindowTrigger: (TimerTask) -> Void
     let onDeleteTask: (TimerTask) -> Void
+    let onChangePriority: (TimerTask, Int) -> Void
 
     var body: some View {
         HStack {
@@ -19,6 +21,19 @@ struct TaskRowHeaderView: View {
                 )
             ).fixedSize()
             Text(task.title)
+            Picker(
+                "Priority",
+                selection: Binding(
+                    get: { task.priority + 1 },
+                    set: { onChangePriority(task, $0 - 1) }
+                )
+            ) {
+                ForEach(1...max(1, taskCount), id: \.self) { value in
+                    Text("\(value)")
+                }
+            }
+            .labelsHidden()
+            .frame(width: 60)
             Button {
                 onToggleTimer(task)
             } label: {

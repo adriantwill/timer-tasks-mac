@@ -1,0 +1,58 @@
+{
+  "lifetimeStats": [
+    {
+      "color": "#3b7ac9",
+      "title": "Math Academy",
+      "totalTimeSpent": 110016,
+      "weeksCompleted": 0,
+      "breakdown": [
+        {
+          "title": "Math Academy",
+          "time": 110016
+        }
+      ]
+    },
+    {
+      "color": "#f1a53f",
+      "title": "LeetCode",
+      "totalTimeSpent": 5246,
+      "weeksCompleted": 0
+    },
+    {
+      "color": "#00a63e",
+      "title": "Technical Reading",
+      "totalTimeSpent": 29493,
+      "weeksCompleted": 0,
+      "breakdown": [
+        {
+          "title": "Hands-On Machine Learning with Scikit-Learn and PyTorch",
+          "time": 29493
+        }
+      ]
+    },
+    {
+      "color": "#ff2600",
+      "title": "Projects",
+      "totalTimeSpent": 123589,
+      "weeksCompleted": 0,
+      "breakdown": [
+        {
+          "title": "ADP Estimation",
+          "time": 2701
+        },
+        {
+          "title": "Music Info CLI",
+          "time": 19384
+        },
+        {
+          "title": "Flashcard Website",
+          "time": 74729
+        },
+        {
+          "title": "Timer Tasks Mac",
+          "time": 26775
+        }
+      ]
+    }
+  ]
+}
