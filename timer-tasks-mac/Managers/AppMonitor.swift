@@ -85,7 +85,9 @@ class AppMonitor {
             let context = modelContext
         else { return }
         let windowTitle = getWindowTitle(app: app)
-        let descriptor = FetchDescriptor<TimerTask>()
+        let descriptor = FetchDescriptor<TimerTask>(
+            sortBy: [SortDescriptor(\TimerTask.priority, order: .forward)]
+        )
         guard let tasks = try? context.fetch(descriptor) else { return }
 
         let active = TimerManager.shared.activeTask
@@ -114,7 +116,9 @@ class AppMonitor {
         }
 
         if let match {
-            TimerManager.shared.start(task: match)
+            if TimerManager.shared.activeTask?.id != match.id {
+                TimerManager.shared.start(task: match)
+            }
         } else {
             TimerManager.shared.stop()
         }
