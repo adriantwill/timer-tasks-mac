@@ -69,7 +69,13 @@ struct ContentView: View {
         }
         .onChange(of: scenePhase) { oldPhase, newPhase in
             if newPhase == .background || newPhase == .inactive {
-                try? modelContext.save()
+                do {
+                    try modelContext.save()
+                } catch {
+                    errorMessage = "Save failed on scene change: \(error.localizedDescription)"
+                    showError = true
+                    print("Save failed on scene change: \(error)")
+                }
             }
         }
         .confirmationDialog(
@@ -226,6 +232,13 @@ struct ContentView: View {
 
         )
         modelContext.insert(new_task)
+        do {
+            try modelContext.save()
+        } catch {
+            errorMessage = "Save failed after add task: \(error.localizedDescription)"
+            showError = true
+            print("Save failed after add task: \(error)")
+        }
         taskTitle = ""
     }
 
