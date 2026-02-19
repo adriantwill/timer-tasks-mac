@@ -10,36 +10,40 @@ import SwiftData
 
 @main
 struct timer_tasks_macApp: App {
-//    var sharedModelContainer: ModelContainer = {
-//        let schema = Schema([
-//            TimerTask.self,
-//            TaskTrigger.self,
-//            Category.self,
-//        ])
-//        let modelConfiguration = ModelConfiguration(
-//            schema: schema,
-//            isStoredInMemoryOnly: false,
-//            allowsSave: true,
-//            cloudKitDatabase: .none
-//        )
-//
-//        do {
-//            return try ModelContainer(
-//                for: schema,
-//                migrationPlan: MigrationPlan.self,
-//                configurations: [modelConfiguration]
-//            )
-//        } catch {
-//            fatalError("Could not create ModelContainer: \(error)")
-//        }
-//    }()
+    private let sharedModelContainer: ModelContainer = {
+        let schema = Schema([
+            TimerTask.self,
+            TaskTrigger.self,
+            Category.self
+        ])
+
+        let appSupport = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first!
+        let storeURL = appSupport.appendingPathComponent("timer-tasks-mac.store")
+
+        let modelConfiguration = ModelConfiguration(
+            schema: schema,
+            url: storeURL,
+            cloudKitDatabase: .none
+        )
+
+        do {
+            return try ModelContainer(
+                for: schema,
+                configurations: [modelConfiguration]
+            )
+        } catch {
+            fatalError("Could not create ModelContainer: \(error)")
+        }
+    }()
 
     var body: some Scene {
         WindowGroup {
             ContentView()
         }
-        .modelContainer(for: [TimerTask.self, TaskTrigger.self, Category.self])
-//        .modelContainer(sharedModelContainer)
+        .modelContainer(sharedModelContainer)
     }
 }
 //
