@@ -383,6 +383,31 @@ Hardening:
 - migration path JSON -> SQLite if needed
 - better logs
 
+## Working Checklist
+
+Mark these off as each step is completed.
+
+- [ ] manual timer REPL
+  - commands: `start`, `stop`, `status`, `quit`
+  - goal: learn `Option`, `Duration`, `Instant`, loops, stdin
+- [ ] add task model
+  - create `Task` struct
+  - start timer for a named task
+  - hardcode tasks first if needed
+- [ ] persist tasks + elapsed time
+  - save/load JSON with `serde`
+  - make state survive restart
+- [ ] move to real CLI commands
+  - keep `clap`
+  - add `task add`, `task list`, `start <id>`, `stop`, `status`
+- [ ] add long-running daemon loop
+  - add `daemon` command
+  - poll every second
+  - update timer state without stdin
+- [ ] add macOS detection
+  - first fake detector
+  - then real frontmost app/window detection
+
 ## Proposed repo shape
 
 ```text

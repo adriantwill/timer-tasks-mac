@@ -1,22 +1,71 @@
 use std::io;
 use std::time::Instant;
+struct Task {
+    name: String,
+    time: u64,
+    started: bool,
+}
 fn main() {
     let mut input = String::new();
     let mut start: Option<Instant> = None;
+    let mut tasks: Vec<Task> = Vec::new();
+    tasks.push(Task {
+        name: String::from("test"),
+        time: 0,
+        started: false,
+    });
+    tasks.push(Task {
+        name: String::from("test1"),
+        time: 0,
+        started: false,
+    });
     loop {
         input.clear();
         io::stdin()
             .read_line(&mut input)
             .expect("you failed to read line");
-        if input.trim() == "start" {
-            start = Some(Instant::now());
-        } else if input.trim() == "stop" {
-            if let Some(s) = start {
-                let elapsed = s.elapsed();
-                println!("It has been {}", elapsed.as_secs());
-                start = None
-            } else {
-                println!("Timer not started");
+        let parts: Vec<&str> = input.trim().split_whitespace().collect();
+        match parts.get(0) {
+            Some(&"start") => {
+                if let Some(task_name) = parts.get(1) {
+                    if let Some(task) = tasks.iter_mut().find(|task| task.name == *task_name) {
+                        if task.started {
+                            println!("Timer already started for this task");
+                        } else {
+                            start = Some(Instant::now());
+                            task.started = true;
+                        }
+                    } else {
+                        println!("Task not found");
+                    }
+                } else {
+                    println!("Enter a task name");
+                }
+            }
+            Some(&"stop") => {
+                if let Some(s) = start {
+                    let elapsed = s.elapsed();
+                    if input.trim() == "stop" {
+                        println!("That was {} seconds", elapsed.as_secs());
+                        tasks[0].time += elapsed.as_secs();
+                        start = None;
+                    } else {
+                        println!("It has been {} seconds", elapsed.as_secs());
+                    }
+                } else {
+                    println!("Timer not started");
+                }
+            }
+            Some(&"status") => {
+                for task in &tasks {
+                    println!("{}: {} seconds", task.name, task.time);
+                }
+            }
+            Some(&"quit") => {
+                return;
+            }
+            _ => {
+                println!("Invalid command, enter stop or start");
             }
         }
     }
