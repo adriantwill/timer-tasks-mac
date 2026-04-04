@@ -3,21 +3,20 @@ use std::time::Instant;
 struct Task {
     name: String,
     time: u64,
-    started: bool,
+    started: Option<Instant>,
 }
 fn main() {
     let mut input = String::new();
-    let mut start: Option<Instant> = None;
     let mut tasks: Vec<Task> = Vec::new();
     tasks.push(Task {
         name: String::from("test"),
         time: 0,
-        started: false,
+        started: None,
     });
     tasks.push(Task {
         name: String::from("test1"),
         time: 0,
-        started: false,
+        started: None,
     });
     loop {
         input.clear();
@@ -27,33 +26,36 @@ fn main() {
         let parts: Vec<&str> = input.trim().split_whitespace().collect();
         match parts.get(0) {
             Some(&"start") => {
-                if let Some(task_name) = parts.get(1) {
-                    if let Some(task) = tasks.iter_mut().find(|task| task.name == *task_name) {
-                        if task.started {
-                            println!("Timer already started for this task");
-                        } else {
-                            start = Some(Instant::now());
-                            task.started = true;
-                        }
-                    } else {
-                        println!("Task not found");
-                    }
-                } else {
+                let Some(task_name) = parts.get(1) else {
                     println!("Enter a task name");
+                    continue;
+                };
+                let Some(task) = tasks.iter_mut().find(|task| task.name == *task_name) else {
+                    println!("Task not found");
+                    continue;
+                };
+                if task.started.is_none() {
+                    task.started = Some(Instant::now());
+                } else {
+                    println!("Timer already started for this task");
                 }
             }
             Some(&"stop") => {
-                if let Some(s) = start {
-                    let elapsed = s.elapsed();
-                    if input.trim() == "stop" {
-                        println!("That was {} seconds", elapsed.as_secs());
-                        tasks[0].time += elapsed.as_secs();
-                        start = None;
-                    } else {
-                        println!("It has been {} seconds", elapsed.as_secs());
-                    }
+                let Some(task_name) = parts.get(1) else {
+                    println!("Enter a task name");
+                    continue;
+                };
+                let Some(task) = tasks.iter_mut().find(|task| task.name == *task_name) else {
+                    println!("Task not found");
+                    continue;
+                };
+                if let Some(started) = task.started {
+                    let elapsed = started.elapsed();
+                    println!("{} took {} seconds", task.name, elapsed.as_secs());
+                    task.time += elapsed.as_secs();
+                    task.started = None;
                 } else {
-                    println!("Timer not started");
+                    println!("Timer not started for this task");
                 }
             }
             Some(&"status") => {
