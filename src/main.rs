@@ -1,23 +1,24 @@
 use std::io;
 use std::time::Instant;
 struct Task {
+    id: usize,
     name: String,
     time: u64,
-    started: bool,
 }
 fn main() {
     let mut input = String::new();
     let mut start: Option<Instant> = None;
+    let mut started_task: Option<usize> = None;
     let mut tasks: Vec<Task> = Vec::new();
     tasks.push(Task {
+        id: 0,
         name: String::from("test"),
         time: 0,
-        started: false,
     });
     tasks.push(Task {
+        id: 1,
         name: String::from("test1"),
         time: 0,
-        started: false,
     });
     loop {
         input.clear();
@@ -35,29 +36,23 @@ fn main() {
                     println!("Task not found");
                     continue;
                 };
-                if task.started {
-                    println!("Timer already started for this task");
+                if start.is_some() {
+                    println!("A timer has already started");
                 } else {
                     start = Some(Instant::now());
-                    task.started = true;
+                    started_task = Some(task.id);
                 }
             }
             Some(&"stop") => {
-                let Some(task_name) = parts.get(1) else {
-                    println!("Enter a task name");
+                let Some(task) = tasks.iter_mut().find(|task| Some(task.id) == started_task) else {
+                    println!("Task not started");
                     continue;
                 };
-                let Some(task) = tasks.iter_mut().find(|task| task.name == *task_name) else {
-                    println!("Task not found");
-                    continue;
-                };
-                if task.started
-                    && let Some(s) = start
-                {
+                if let Some(s) = start {
                     let elapsed = s.elapsed();
                     println!("{} took {} seconds", task.name, elapsed.as_secs());
                     task.time += elapsed.as_secs();
-                    task.started = false;
+                    started_task = None;
                     start = None;
                 } else {
                     println!("Timer not started for this task");
@@ -65,10 +60,17 @@ fn main() {
             }
             Some(&"status") => {
                 for task in &tasks {
-                    println!("{}: {} seconds", task.name, task.time);
+                    let (progress, task_time) = if Some(task.id) == started_task
+                        && let Some(s) = start
+                    {
+                        ("In Progress", task.time + s.elapsed().as_secs())
+                    } else {
+                        ("Paused", task.time)
+                    };
+                    println!("{}: {} seconds ({})", task.name, task_time, progress);
                 }
             }
-            Some(&"quit") => {
+            Some(&"quit") | Some(&"exit") => {
                 return;
             }
             _ => {
