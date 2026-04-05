@@ -3,20 +3,21 @@ use std::time::Instant;
 struct Task {
     name: String,
     time: u64,
-    started: Option<Instant>,
+    started: bool,
 }
 fn main() {
     let mut input = String::new();
+    let mut start: Option<Instant> = None;
     let mut tasks: Vec<Task> = Vec::new();
     tasks.push(Task {
         name: String::from("test"),
         time: 0,
-        started: None,
+        started: false,
     });
     tasks.push(Task {
         name: String::from("test1"),
         time: 0,
-        started: None,
+        started: false,
     });
     loop {
         input.clear();
@@ -34,10 +35,11 @@ fn main() {
                     println!("Task not found");
                     continue;
                 };
-                if task.started.is_none() {
-                    task.started = Some(Instant::now());
-                } else {
+                if task.started {
                     println!("Timer already started for this task");
+                } else {
+                    start = Some(Instant::now());
+                    task.started = true;
                 }
             }
             Some(&"stop") => {
@@ -49,11 +51,14 @@ fn main() {
                     println!("Task not found");
                     continue;
                 };
-                if let Some(started) = task.started {
-                    let elapsed = started.elapsed();
+                if task.started
+                    && let Some(s) = start
+                {
+                    let elapsed = s.elapsed();
                     println!("{} took {} seconds", task.name, elapsed.as_secs());
                     task.time += elapsed.as_secs();
-                    task.started = None;
+                    task.started = false;
+                    start = None;
                 } else {
                     println!("Timer not started for this task");
                 }
