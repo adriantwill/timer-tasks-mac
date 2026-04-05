@@ -44,18 +44,16 @@ fn main() {
                 }
             }
             Some(&"stop") => {
-                let Some(task) = tasks.iter_mut().find(|task| Some(task.id) == started_task) else {
-                    println!("Task not started");
-                    continue;
-                };
-                if let Some(s) = start {
+                if let (Some(task_id), Some(s)) = (started_task, start) {
+                    let Some(task) = tasks.iter_mut().find(|task| task.id == task_id) else {
+                        println!("Task not found");
+                        continue;
+                    };
                     let elapsed = s.elapsed();
                     println!("{} took {} seconds", task.name, elapsed.as_secs());
                     task.time += elapsed.as_secs();
                     started_task = None;
                     start = None;
-                } else {
-                    println!("Timer not started for this task");
                 }
             }
             Some(&"status") => {
