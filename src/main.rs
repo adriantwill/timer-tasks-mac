@@ -1,5 +1,9 @@
+use serde::{Deserialize, Serialize};
+use std::fs;
 use std::io;
 use std::time::Instant;
+
+#[derive(Serialize, Deserialize)]
 struct Task {
     id: usize,
     name: String,
@@ -9,17 +13,13 @@ fn main() {
     let mut input = String::new();
     let mut start: Option<Instant> = None;
     let mut started_task: Option<usize> = None;
-    let mut tasks: Vec<Task> = Vec::new();
-    tasks.push(Task {
-        id: 0,
-        name: String::from("test"),
-        time: 0,
-    });
-    tasks.push(Task {
-        id: 1,
-        name: String::from("test1"),
-        time: 0,
-    });
+    let text = fs::read_to_string("tasks.json").expect("failed to read tasks.json");
+    let mut tasks: Vec<Task> = serde_json::from_str(&text).unwrap();
+    // tasks.push(Task {
+    //     id: 1,
+    //     name: String::from("test1"),
+    //     time: 0,
+    // });
     loop {
         input.clear();
         io::stdin()
@@ -27,6 +27,13 @@ fn main() {
             .expect("you failed to read line");
         let parts: Vec<&str> = input.trim().split_whitespace().collect();
         match parts.get(0) {
+            Some(&"add") => {
+                tasks.push(Task {
+                    id: 0,
+                    name: String::from("test"),
+                    time: 0,
+                });
+            }
             Some(&"start") => {
                 let Some(task_name) = parts.get(1) else {
                     println!("Enter a task name");
@@ -52,6 +59,8 @@ fn main() {
                     let elapsed = s.elapsed();
                     println!("{} took {} seconds", task.name, elapsed.as_secs());
                     task.time += elapsed.as_secs();
+                    let serialized = serde_json::to_string(&tasks).unwrap();
+                    fs::write("tasks.json", serialized).expect("failed to write tasks.json");
                     started_task = None;
                     start = None;
                 }
@@ -69,7 +78,11 @@ fn main() {
                 }
             }
             Some(&"quit") | Some(&"exit") => {
-                return;
+                if start.is_some() {
+                    println!("Task in progress, stop it first");
+                } else {
+                    return;
+                }
             }
             _ => {
                 println!("Invalid command, enter stop or start");
