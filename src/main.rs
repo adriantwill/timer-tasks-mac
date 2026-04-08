@@ -2,17 +2,18 @@ use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
+use uuid::Uuid;
 
 #[derive(Serialize, Deserialize)]
 struct AppState {
     tasks: Vec<Task>,
-    started_task_id: Option<usize>,
+    started_task_id: Option<String>,
     started_at: Option<u64>,
 }
 
 #[derive(Serialize, Deserialize)]
 struct Task {
-    id: usize,
+    id: String,
     name: String,
     time: u64,
 }
@@ -37,10 +38,12 @@ fn main() {
     match cli.command {
         Commands::Add { name } => {
             app_state.tasks.push(Task {
-                id: 0,
+                id: Uuid::new_v4().to_string(),
                 name: name,
                 time: 0,
             });
+            let serialized = serde_json::to_string(&app_state).unwrap();
+            fs::write("tasks.json", serialized).expect("failed to write tasks.json");
         }
         Commands::Start { task_name } => {
             let Some(task) = app_state
@@ -54,7 +57,7 @@ fn main() {
             if app_state.started_at.is_some() {
                 println!("A timer has already started");
             } else {
-                app_state.started_task_id = Some(task.id);
+                app_state.started_task_id = Some(task.id.clone());
                 app_state.started_at = Some(
                     SystemTime::now()
                         .duration_since(UNIX_EPOCH)
@@ -86,7 +89,7 @@ fn main() {
         }
         Commands::Status => {
             for task in &app_state.tasks {
-                let (progress, task_time) = if Some(task.id) == app_state.started_task_id
+                let (progress, task_time) = if Some(task.id.clone()) == app_state.started_task_id
                     && let Some(s) = app_state.started_at
                 {
                     (
