@@ -34,11 +34,6 @@ fn main() {
 
     let text = fs::read_to_string("tasks.json").expect("failed to read tasks.json");
     let mut app_state: AppState = serde_json::from_str(&text).unwrap();
-    // tasks.push(Task {
-    //     id: 1,
-    //     name: String::from("test1"),
-    //     time: 0,
-    // });
     match cli.command {
         Commands::Add { name } => {
             app_state.tasks.push(Task {
