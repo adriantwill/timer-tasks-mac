@@ -97,11 +97,33 @@ fn main() {
             let serialized = serde_json::to_string(&app_state).unwrap();
             fs::write("tasks.json", serialized).expect("failed to write tasks.json");
         }
-        Commands::Stop => {}
+        Commands::Stop => {
+            if let Some(started_task) = app_state.started_task.take() {
+                let Some(task) = app_state
+                    .tasks
+                    .iter_mut()
+                    .find(|task| task.id == started_task.task_id)
+                else {
+                    println!("Task not found");
+                    return;
+                };
+                let elapsed = now() - started_task.started_at;
+                println!("{} took {} seconds", task.name, elapsed);
+                task.time += elapsed;
+                let serialized = serde_json::to_string(&app_state).unwrap();
+                fs::write("tasks.json", serialized).expect("failed to write tasks.json");
+            }
+        }
         Commands::Status => {
             for task in &app_state.tasks {
-                //TODO add whether timer is paused or not
-                println!("{}: {} seconds ", task.name, task.time);
+                let (progress, task_time) = if let Some(started_task) = &app_state.started_task
+                    && started_task.task_id == task.id
+                {
+                    ("In Progress", task.time + now() - started_task.started_at)
+                } else {
+                    ("Paused", task.time)
+                };
+                println!("{}: {} seconds ({})", task.name, task_time, progress);
             }
         }
         Commands::Test => {
