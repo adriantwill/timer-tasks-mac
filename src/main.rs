@@ -26,6 +26,7 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum Commands {
     Add { name: String },
+    List,
     Start { task_name: String },
     Stop,
     Status,
@@ -45,11 +46,16 @@ fn main() {
             let serialized = serde_json::to_string(&app_state).unwrap();
             fs::write("tasks.json", serialized).expect("failed to write tasks.json");
         }
+        Commands::List => {
+            for task in &app_state.tasks {
+                println!("{}: {}", task.id, task.name);
+            }
+        }
         Commands::Start { task_name } => {
             let Some(task) = app_state
                 .tasks
                 .iter_mut()
-                .find(|task| task.name == *task_name)
+                .find(|task| task.id == *task_name)
             else {
                 println!("Task not found");
                 return;

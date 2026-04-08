@@ -1,9 +1,9 @@
 {
   "tasks": [
     {
-      "id": 0,
+      "id": "8d347857-4f0c-4a0a-9f6b-d51712aa48ac",
       "name": "test",
-      "time": 64
+      "time": 0
     }
   ],
   "started_task_id": null,
