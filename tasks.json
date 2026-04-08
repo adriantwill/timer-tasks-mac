@@ -1,11 +1,1 @@
-{
-  "started_task_id": null,
-  "started_at": null,
-  "tasks": [
-    {
-      "id": 0,
-      "name": "test",
-      "time": 3
-    }
-  ]
-}
+{"tasks":[{"id":0,"name":"test","time":64}],"started_task_id":null,"started_at":null}
