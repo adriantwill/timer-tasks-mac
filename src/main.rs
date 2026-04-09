@@ -1,4 +1,6 @@
+use accessibility::{AXUIElement, AXUIElementAttributes};
 use clap::{Parser, Subcommand};
+use objc2_app_kit::NSWorkspace;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -16,6 +18,12 @@ struct Task {
     id: String,
     name: String,
     time: u64,
+    trigger: Option<Trigger>,
+}
+#[derive(Serialize, Deserialize)]
+struct Trigger {
+    app: String,
+    title: String,
 }
 #[derive(Parser, Debug)]
 #[command(name = "timer-tasks")]
@@ -30,10 +38,10 @@ enum Commands {
     Start { task_name: String },
     Stop,
     Status,
+    Test,
 }
 fn main() {
     let cli = Cli::parse();
-
     let text = fs::read_to_string("tasks.json").expect("failed to read tasks.json");
     let mut app_state: AppState = serde_json::from_str(&text).unwrap();
     match cli.command {
@@ -42,6 +50,7 @@ fn main() {
                 id: Uuid::new_v4().to_string(),
                 name: name,
                 time: 0,
+                trigger: None,
             });
             let serialized = serde_json::to_string(&app_state).unwrap();
             fs::write("tasks.json", serialized).expect("failed to write tasks.json");
@@ -113,5 +122,23 @@ fn main() {
                 println!("{}: {} seconds ({})", task.name, task_time, progress);
             }
         }
+        Commands::Test => {
+            if let Err(err) = print_front_window_title() {
+                println!("{err:?} err");
+            }
+        }
     }
+}
+
+fn print_front_window_title() -> Result<(), accessibility::Error> {
+    let Some(app) = NSWorkspace::sharedWorkspace().frontmostApplication() else {
+        println!("No frontmost app");
+        return Ok(());
+    };
+    println!("{app:?}");
+    let front = AXUIElement::application(app.processIdentifier());
+    let window = front.focused_window()?;
+    let title = window.title()?;
+    println!("{title:?} succ");
+    Ok(())
 }

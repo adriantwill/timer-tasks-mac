@@ -3,7 +3,14 @@
     {
       "id": "8d347857-4f0c-4a0a-9f6b-d51712aa48ac",
       "name": "test",
-      "time": 0
+      "time": 0,
+      "trigger": null
+    },
+    {
+      "id": "d16a5cca-0ec9-4556-8c1f-7dbb9432069d",
+      "name": "test1",
+      "time": 0,
+      "trigger": null
     }
   ],
   "started_task_id": null,
