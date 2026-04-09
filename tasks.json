@@ -8,6 +8,15 @@
         "app": "",
         "title": ""
       }
+    },
+    {
+      "id": "d16a5cca-0ec9-4556-8c1f-7dbb9432069d",
+      "name": "test1",
+      "time": 0,
+      "trigger": {
+        "app": "",
+        "title": ""
+      }
     }
   ],
   "started_task": null
