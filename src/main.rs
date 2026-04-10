@@ -18,7 +18,7 @@ struct Task {
     id: String,
     name: String,
     time: u64,
-    trigger: Option<Trigger>,
+    trigger: Trigger,
 }
 #[derive(Serialize, Deserialize)]
 struct Trigger {
@@ -39,6 +39,11 @@ enum Commands {
     Stop,
     Status,
     Test,
+    Dameon,
+}
+struct DetectedWindow {
+    app: String,
+    title: String,
 }
 fn main() {
     let cli = Cli::parse();
@@ -50,7 +55,10 @@ fn main() {
                 id: Uuid::new_v4().to_string(),
                 name: name,
                 time: 0,
-                trigger: None,
+                trigger: Trigger {
+                    app: "".to_string(),
+                    title: "".to_string(),
+                },
             });
             let serialized = serde_json::to_string(&app_state).unwrap();
             fs::write("tasks.json", serialized).expect("failed to write tasks.json");
@@ -69,19 +77,6 @@ fn main() {
                 println!("Task not found");
                 return;
             };
-            if app_state.started_at.is_some() {
-                println!("A timer has already started");
-            } else {
-                app_state.started_task_id = Some(task.id.clone());
-                app_state.started_at = Some(
-                    SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs(),
-                );
-                let serialized = serde_json::to_string(&app_state).unwrap();
-                fs::write("tasks.json", serialized).expect("failed to write tasks.json");
-            }
         }
         Commands::Stop => {
             if let (Some(task_id), Some(s)) = (app_state.started_task_id, app_state.started_at) {
@@ -123,22 +118,70 @@ fn main() {
             }
         }
         Commands::Test => {
-            if let Err(err) = print_front_window_title() {
+            if let Err(err) = return_front_title() {
                 println!("{err:?} err");
+            }
+        }
+        Commands::Dameon => {
+            loop {
+                let detected = return_front_title();
+                let Ok(detect) = detected else {
+                    println!("detect is bad");
+                    continue;
+                };
+                let Some(task) = app_state.tasks.iter_mut().find(|task| {
+                    task.trigger.app == detect.app && task.trigger.title == detect.title
+                }) else {
+                    println!("Task not found");
+                    return;
+                };
+                if app_state.started_at.is_some() {
+                    println!("A timer has already started");
+                } else {
+                    app_state.started_task_id = Some(task.id.clone());
+                    app_state.started_at = Some(
+                        SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs(),
+                    );
+                    let serialized = serde_json::to_string(&app_state).unwrap();
+                    fs::write("tasks.json", serialized).expect("failed to write tasks.json");
+                }
             }
         }
     }
 }
 
-fn print_front_window_title() -> Result<(), accessibility::Error> {
+fn return_front_title() -> Result<DetectedWindow, accessibility::Error> {
+    let mut detected = DetectedWindow {
+        app: "".to_string(),
+        title: "".to_string(),
+    };
     let Some(app) = NSWorkspace::sharedWorkspace().frontmostApplication() else {
         println!("No frontmost app");
-        return Ok(());
+        return Ok(detected);
     };
     println!("{app:?}");
     let front = AXUIElement::application(app.processIdentifier());
     let window = front.focused_window()?;
     let title = window.title()?;
     println!("{title:?} succ");
-    Ok(())
+    detected.app = app.processIdentifier().to_string();
+    detected.title = title.to_string();
+    return Ok(detected);
+}
+
+fn stop_timer(task: Task, app_state: AppState) {
+    let elapsed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+        - s;
+    println!("{} took {} seconds", task.name, elapsed);
+    task.time += elapsed;
+    app_state.started_task_id = None;
+    app_state.started_at = None;
+    let serialized = serde_json::to_string(&app_state).unwrap();
+    fs::write("tasks.json", serialized).expect("failed to write app_state.tasks.json");
 }
