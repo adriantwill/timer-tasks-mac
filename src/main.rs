@@ -77,26 +77,21 @@ fn main() {
                 println!("Task not found");
                 return;
             };
-        }
-        Commands::Stop => {
-            if let (Some(task_id), Some(s)) = (app_state.started_task_id, app_state.started_at) {
-                let Some(task) = app_state.tasks.iter_mut().find(|task| task.id == task_id) else {
-                    println!("Task not found");
-                    return;
-                };
-                let elapsed = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs()
-                    - s;
-                println!("{} took {} seconds", task.name, elapsed);
-                task.time += elapsed;
-                app_state.started_task_id = None;
-                app_state.started_at = None;
+            if app_state.started_at.is_some() {
+                println!("A timer has already started");
+            } else {
+                app_state.started_task_id = Some(task.id.clone());
+                app_state.started_at = Some(
+                    SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs(),
+                );
                 let serialized = serde_json::to_string(&app_state).unwrap();
-                fs::write("tasks.json", serialized).expect("failed to write app_state.tasks.json");
+                fs::write("tasks.json", serialized).expect("failed to write tasks.json");
             }
         }
+        Commands::Stop => {}
         Commands::Status => {
             for task in &app_state.tasks {
                 let (progress, task_time) = if Some(task.id.clone()) == app_state.started_task_id
@@ -127,27 +122,26 @@ fn main() {
                 let detected = return_front_title();
                 let Ok(detect) = detected else {
                     println!("detect is bad");
-                    continue;
+                    return;
                 };
                 let Some(task) = app_state.tasks.iter_mut().find(|task| {
                     task.trigger.app == detect.app && task.trigger.title == detect.title
                 }) else {
+                    if !app_state.started_task_id.is_none() {
+                        let Some(task) = app_state //test
+                            .tasks
+                            .iter_mut()
+                            .find(|task| task.id == app_state.started_task_id)
+                        else {
+                            println!("task not found");
+                            return;
+                        };
+                    }
+                    app_state.started_at = None;
+                    app_state.started_task_id = None;
                     println!("Task not found");
                     return;
                 };
-                if app_state.started_at.is_some() {
-                    println!("A timer has already started");
-                } else {
-                    app_state.started_task_id = Some(task.id.clone());
-                    app_state.started_at = Some(
-                        SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap()
-                            .as_secs(),
-                    );
-                    let serialized = serde_json::to_string(&app_state).unwrap();
-                    fs::write("tasks.json", serialized).expect("failed to write tasks.json");
-                }
             }
         }
     }
@@ -172,16 +166,22 @@ fn return_front_title() -> Result<DetectedWindow, accessibility::Error> {
     return Ok(detected);
 }
 
-fn stop_timer(task: Task, app_state: AppState) {
-    let elapsed = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs()
-        - s;
-    println!("{} took {} seconds", task.name, elapsed);
-    task.time += elapsed;
-    app_state.started_task_id = None;
-    app_state.started_at = None;
-    let serialized = serde_json::to_string(&app_state).unwrap();
-    fs::write("tasks.json", serialized).expect("failed to write app_state.tasks.json");
+fn stop_task(mut app_state: AppState) {
+    if let (Some(task_id), Some(s)) = (app_state.started_task_id, app_state.started_at) {
+        let Some(task) = app_state.tasks.iter_mut().find(|task| task.id == task_id) else {
+            println!("Task not found");
+            return;
+        };
+        let elapsed = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            - s;
+        println!("{} took {} seconds", task.name, elapsed);
+        task.time += elapsed;
+        app_state.started_task_id = None;
+        app_state.started_at = None;
+        let serialized = serde_json::to_string(&app_state).unwrap();
+        fs::write("tasks.json", serialized).expect("failed to write app_state.tasks.json");
+    }
 }
