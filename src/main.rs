@@ -117,33 +117,22 @@ fn main() {
                 println!("{err:?} err");
             }
         }
-        Commands::Dameon => {
-            loop {
-                let detected = return_front_title();
-                let Ok(detect) = detected else {
-                    println!("detect is bad");
-                    return;
-                };
-                let Some(task) = app_state.tasks.iter_mut().find(|task| {
-                    task.trigger.app == detect.app && task.trigger.title == detect.title
-                }) else {
-                    if !app_state.started_task_id.is_none() {
-                        let Some(task) = app_state //test
-                            .tasks
-                            .iter_mut()
-                            .find(|task| task.id == app_state.started_task_id)
-                        else {
-                            println!("task not found");
-                            return;
-                        };
-                    }
-                    app_state.started_at = None;
-                    app_state.started_task_id = None;
-                    println!("Task not found");
-                    return;
-                };
-            }
-        }
+        Commands::Dameon => loop {
+            let detected = return_front_title();
+            let Ok(detect) = detected else {
+                println!("detect is bad");
+                return;
+            };
+            println!("{}", detect.title);
+            let started_task = app_state
+                .tasks
+                .iter()
+                .find(|task| Some(&task.id) == app_state.started_task_id.as_ref());
+            let current_window_task = app_state
+                .tasks
+                .iter()
+                .find(|task| task.trigger.app == detect.app);
+        },
     }
 }
 
@@ -166,8 +155,8 @@ fn return_front_title() -> Result<DetectedWindow, accessibility::Error> {
     return Ok(detected);
 }
 
-fn stop_task(mut app_state: AppState) {
-    if let (Some(task_id), Some(s)) = (app_state.started_task_id, app_state.started_at) {
+fn stop_task(app_state: &mut AppState) {
+    if let (Some(task_id), Some(s)) = (app_state.started_task_id.clone(), app_state.started_at) {
         let Some(task) = app_state.tasks.iter_mut().find(|task| task.id == task_id) else {
             println!("Task not found");
             return;
