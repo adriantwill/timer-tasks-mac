@@ -43,7 +43,7 @@ enum Commands {
     Stop,
     Status,
     Test,
-    Dameon,
+    Daemon,
 }
 struct DetectedWindow {
     app: String,
@@ -108,39 +108,59 @@ fn main() {
                 println!("{err:?} err");
             }
         }
-        Commands::Dameon => loop {
+        Commands::Daemon => loop {
             let detected = return_front_title();
             let Ok(detect) = detected else {
                 println!("detect is bad");
-                return;
+                continue;
             };
             println!("{}", detect.title);
-            let current_window_task_id = app_state
+            let curr_task_id = app_state
                 .tasks
                 .iter()
                 .find(|task| task.trigger.app == detect.app)
                 .map(|task| task.id.clone());
 
-            let active_task_id = app_state
+            let prev_task_id = app_state
                 .started_task
                 .as_ref()
                 .map(|started| started.task_id.clone());
 
-            if active_task_id != current_window_task_id {
-                if app_state.started_task.is_some() {
-                    add_elapsed_to_task(&mut app_state);
+            let changed = prev_task_id != curr_task_id;
+
+            if prev_task_id.is_some() {
+                add_elapsed_to_task(&mut app_state);
+                if changed {
                     app_state.started_task = None;
                 }
-                if let Some(task_id) = current_window_task_id {
-                    app_state.started_task = Some(StartedTask {
-                        task_id: task_id.clone(),
-                        started_at: now(),
-                    });
-                }
-            } else {
-                add_elapsed_to_task(&mut app_state);
+                write_json(&mut app_state);
             }
-            write_json(&mut app_state);
+            if let Some(task_id) = curr_task_id
+                && changed
+            {
+                app_state.started_task = Some(StartedTask {
+                    task_id: task_id.clone(),
+                    started_at: now(),
+                });
+                if prev_task_id.is_none() {
+                    write_json(&mut app_state);
+                }
+            };
+            // if active_task_id != current_window_task_id {
+            //     if app_state.started_task.is_some() {
+            //         add_elapsed_to_task(&mut app_state);
+            //         app_state.started_task = None;
+            //     }
+            //     if let Some(task_id) = current_window_task_id {
+            //         app_state.started_task = Some(StartedTask {
+            //             task_id: task_id.clone(),
+            //             started_at: now(),
+            //         });
+            //     }
+            // } else {
+            //     add_elapsed_to_task(&mut app_state);
+            // }
+
             std::thread::sleep(std::time::Duration::from_secs(1));
         },
     }
@@ -166,7 +186,7 @@ fn now() -> u64 {
 }
 
 fn return_front_title() -> Result<DetectedWindow, accessibility::Error> {
-    let mut detected = DetectedWindow {
+    let detected = DetectedWindow {
         app: "".to_string(),
         title: "".to_string(),
     };
@@ -175,13 +195,18 @@ fn return_front_title() -> Result<DetectedWindow, accessibility::Error> {
         return Ok(detected);
     };
     println!("{app:?}");
+    let Some(bundle_id) = app.bundleIdentifier() else {
+        println!("no front app bundle id");
+        return Ok(detected);
+    };
     let front = AXUIElement::application(app.processIdentifier());
-    let window = front.focused_window()?;
-    let title = window.title()?;
+    let title = front.focused_window()?.title()?;
+    //TODO make it return empty window title if theres error
     println!("{title:?} succ");
-    detected.app = app.processIdentifier().to_string();
-    detected.title = title.to_string();
-    return Ok(detected);
+    return Ok(DetectedWindow {
+        app: bundle_id.to_string(),
+        title: title.to_string(),
+    });
 }
 
 fn write_json(app_state: &mut AppState) {
