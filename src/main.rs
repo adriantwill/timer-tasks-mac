@@ -40,8 +40,6 @@ struct Cli {
 enum Commands {
     Add { name: String },
     List,
-    Start { task_name: String },
-    Stop,
     Status,
     Test,
     Daemon,
@@ -71,47 +69,6 @@ fn main() {
         Commands::List => {
             for task in &app_state.tasks {
                 println!("{}: {}", task.id, task.name);
-            }
-        }
-        Commands::Start { task_name } => {
-            let Some(task) = app_state
-                .tasks
-                .iter_mut()
-                .find(|task| task.id == *task_name)
-            else {
-                println!("Task not found");
-                return;
-            };
-            if app_state.started_task.is_some() {
-                println!("A timer has already started");
-                return;
-            }
-
-            app_state.started_task = Some(StartedTask {
-                task_id: task.id.clone(),
-                started_at: SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs(),
-            });
-            let serialized = serde_json::to_string(&app_state).unwrap();
-            fs::write("tasks.json", serialized).expect("failed to write tasks.json");
-        }
-        Commands::Stop => {
-            if let Some(started_task) = app_state.started_task.take() {
-                let Some(task) = app_state
-                    .tasks
-                    .iter_mut()
-                    .find(|task| task.id == started_task.task_id)
-                else {
-                    println!("Task not found");
-                    return;
-                };
-                let elapsed = now() - started_task.started_at;
-                println!("{} took {} seconds", task.name, elapsed);
-                task.time += elapsed;
-                let serialized = serde_json::to_string(&app_state).unwrap();
-                fs::write("tasks.json", serialized).expect("failed to write tasks.json");
             }
         }
         Commands::Status => {
@@ -169,7 +126,8 @@ fn main() {
                 });
             };
             if should_write {
-                write_json(&mut app_state);
+                let serialized = serde_json::to_string(&app_state).unwrap();
+                fs::write("tasks.json", serialized).expect("failed to write tasks.json");
             }
         },
     }
@@ -212,20 +170,8 @@ fn return_front_title() -> Result<DetectedWindow, accessibility::Error> {
         Ok(title) => title.to_string(),
         Err(_) => "".to_string(),
     };
-    println!(
-        "pid={} bundle_id={} title={}",
-        app.processIdentifier(),
-        bundle_id,
-        title.to_string()
-    );
-    println!("{title:?} succ");
     return Ok(DetectedWindow {
         app: bundle_id.to_string(),
         title,
     });
-}
-
-fn write_json(app_state: &mut AppState) {
-    let serialized = serde_json::to_string(&app_state).unwrap();
-    fs::write("tasks.json", serialized).expect("failed to write tasks.json");
 }
