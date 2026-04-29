@@ -112,13 +112,15 @@ fn main() {
             let detected = return_front_title();
             let Ok(detect) = detected else {
                 println!("detect is bad");
+                std::thread::sleep(std::time::Duration::from_secs(1));
+
                 continue;
             };
             println!("{}", detect.title);
             let curr_task_id = app_state
                 .tasks
                 .iter()
-                .find(|task| task.trigger.app == detect.app)
+                .find(|task| task.trigger.app == detect.app && task.trigger.title == detect.title)
                 .map(|task| task.id.clone());
 
             let prev_task_id = app_state
@@ -133,8 +135,8 @@ fn main() {
                 if changed {
                     app_state.started_task = None;
                 }
-                write_json(&mut app_state);
             }
+            let should_write = prev_task_id.is_some() || (curr_task_id.is_some() && changed);
             if let Some(task_id) = curr_task_id
                 && changed
             {
@@ -142,25 +144,10 @@ fn main() {
                     task_id: task_id.clone(),
                     started_at: now(),
                 });
-                if prev_task_id.is_none() {
-                    write_json(&mut app_state);
-                }
             };
-            // if active_task_id != current_window_task_id {
-            //     if app_state.started_task.is_some() {
-            //         add_elapsed_to_task(&mut app_state);
-            //         app_state.started_task = None;
-            //     }
-            //     if let Some(task_id) = current_window_task_id {
-            //         app_state.started_task = Some(StartedTask {
-            //             task_id: task_id.clone(),
-            //             started_at: now(),
-            //         });
-            //     }
-            // } else {
-            //     add_elapsed_to_task(&mut app_state);
-            // }
-
+            if should_write {
+                write_json(&mut app_state);
+            }
             std::thread::sleep(std::time::Duration::from_secs(1));
         },
     }
@@ -194,18 +181,25 @@ fn return_front_title() -> Result<DetectedWindow, accessibility::Error> {
         println!("No frontmost app");
         return Ok(detected);
     };
-    println!("{app:?}");
     let Some(bundle_id) = app.bundleIdentifier() else {
         println!("no front app bundle id");
         return Ok(detected);
     };
     let front = AXUIElement::application(app.processIdentifier());
-    let title = front.focused_window()?.title()?;
-    //TODO make it return empty window title if theres error
+    let title = match front.focused_window().and_then(|window| window.title()) {
+        Ok(title) => title.to_string(),
+        Err(_) => "".to_string(),
+    };
+    println!(
+        "pid={} bundle_id={} title={:?}",
+        app.processIdentifier(),
+        bundle_id,
+        title
+    );
     println!("{title:?} succ");
     return Ok(DetectedWindow {
         app: bundle_id.to_string(),
-        title: title.to_string(),
+        title,
     });
 }
 
