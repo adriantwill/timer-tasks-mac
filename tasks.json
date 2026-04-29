@@ -1,11 +1,1 @@
-{
-  "tasks": [
-    {
-      "id": 0,
-      "name": "test",
-      "time": 64
-    }
-  ],
-  "started_task_id": null,
-  "started_at": null
-}
+{"tasks":[{"id":"35f5aa8d-8d32-4424-8da6-3b40a51efdf0","name":"test","time":1574,"trigger":{"app":"","title":""}}],"started_task":null}

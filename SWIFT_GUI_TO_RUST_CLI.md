@@ -5,7 +5,6 @@
 Port prior macOS SwiftUI app into a Rust binary without losing core behavior:
 
 - task list
-- categories
 - triggers by app bundle id
 - triggers by window title
 - active task timer
@@ -17,7 +16,7 @@ The Rust binary should do 2 jobs:
 - CLI for CRUD/admin
 - background daemon for auto timer switching
 
-Current Rust app is only a `clap` stub in [src/main.rs](/Users/adrianwill/Dev/timer-tasks-mac/src/main.rs). This doc maps old Swift app shape to a Rust CLI + daemon design.
+Current Rust app already has the core `clap` CLI working in [src/main.rs](/Users/adrianwill/Dev/timer-tasks-mac/src/main.rs). This doc tracks remaining work from here.
 
 ## What the Swift app actually did
 
@@ -26,16 +25,14 @@ Final Swift impl in git history (`5a17e50`) had 3 main parts:
 1. Data models
    - `TimerTask`
    - `TaskTrigger`
-   - `Category`
 2. Runtime services
    - `TimerManager`: increments active task every second
    - `AppMonitor`: watches frontmost app + focused window title, auto-starts/stops tasks
 3. UI
    - list tasks
-   - add task/category
+   - add task
    - add trigger from installed app
    - add trigger from running window title
-   - reorder by priority
 
 The important part for Rust is not the GUI. It is:
 
@@ -52,11 +49,9 @@ Needs:
 
 - `id: Uuid`
 - `title: String`
-- `priority: i32`
 - `target_time_secs: Option<i64>`
 - `elapsed_secs: i64`
 - `is_manual_complete: bool`
-- `category_id: Option<Uuid>`
 - `created_at`
 - `updated_at`
 
@@ -78,23 +73,12 @@ Matching rules from Swift:
 - exact or contains match based on `is_exact_title_match`
 - optional guard: only match if same task was previously active when `previous_active == true`
 
-### `Category`
-
-Needs:
-
-- `id: Uuid`
-- `name: String`
-- `color: [f32; 3]` or hex string
-
-For CLI, color is metadata only. No need for rich GUI color handling.
-
 ## Swift concept -> Rust concept
 
 | Swift app | Rust CLI |
 |---|---|
 | `SwiftData` models | SQLite or JSON-backed structs |
 | `ModelContext` | repository layer |
-| `@Query(sort: \\TimerTask.priority)` | repository query with explicit sort |
 | `TimerManager.shared` | app state service with active task + ticker loop |
 | `AppMonitor.shared` | macOS monitor service |
 | SwiftUI list/forms | `clap` subcommands |
@@ -113,7 +97,6 @@ Suggested files:
 
 - `src/model/task.rs`
 - `src/model/trigger.rs`
-- `src/model/category.rs`
 
 ### 2. `store`
 
@@ -182,7 +165,7 @@ Short-lived commands for users to manage data.
 Examples:
 
 ```bash
-timer-tasks task add "Design App" --category Work
+timer-tasks task add "Design App"
 timer-tasks task list
 timer-tasks task delete <task-id>
 timer-tasks trigger add-app <task-id> com.microsoft.VSCode
@@ -213,13 +196,11 @@ This process should:
 Swift GUI actions become commands like:
 
 ```bash
-timer-tasks task add "Design App" --category Work
+timer-tasks task add "Design App"
 timer-tasks task list
 timer-tasks task delete <task-id>
-timer-tasks category add Work --color '#296ef2'
 timer-tasks trigger add-app <task-id> com.microsoft.VSCode
 timer-tasks trigger add-window <task-id> com.microsoft.VSCode --title "Linear"
-timer-tasks task move <task-id> --priority 0
 ```
 
 ### Manual timing
@@ -316,7 +297,6 @@ If JSON:
 ```json
 {
   "tasks": [],
-  "categories": [],
   "triggers": [],
   "active_task_id": null,
   "active_started_at": null
@@ -337,12 +317,12 @@ From Swift `AppMonitor`:
 
 1. read frontmost bundle id
 2. read current window title
-3. load tasks sorted by priority ascending
-4. first matching task wins
+3. load tasks
+4. first matching trigger wins
 5. if a different task matches, stop old timer and start new one
 6. if none match, stop active timer
 
-This priority-ordered first-match behavior matters. Keep it.
+First-match behavior matters. Keep it deterministic.
 
 ## Recommended implementation order
 
@@ -352,8 +332,7 @@ Build non-daemon CLI:
 
 - models
 - JSON store
-- task/category/trigger CRUD
-- priority reorder
+- task/trigger CRUD
 - `start`, `stop`, `status`
 
 ### Phase 2
@@ -383,6 +362,15 @@ Hardening:
 - migration path JSON -> SQLite if needed
 - better logs
 
+### Phase 5
+
+Final optional quality-of-life features:
+
+- categories if grouping feels worth it later
+- manual task ordering / priority if trigger conflicts need it
+- friendlier task id prefixes in CLI output and lookup
+- inspect helpers for frontmost app / windows
+
 ## Working Checklist
 
 Mark these off as each step is completed.
@@ -397,9 +385,10 @@ Mark these off as each step is completed.
 - [ ] persist tasks + elapsed time
   - save/load JSON with `serde`
   - make state survive restart
-- [ ] move to real CLI commands
+- [x] move to real CLI commands
   - keep `clap`
   - add `task add`, `task list`, `start <id>`, `stop`, `status`
+- [x] add trigger CRUD
 - [ ] add long-running daemon loop
   - add `daemon` command
   - poll every second
@@ -419,7 +408,6 @@ src/
     mod.rs
     task.rs
     trigger.rs
-    category.rs
   store/
     mod.rs
     json_store.rs
@@ -433,9 +421,8 @@ src/
 ## Example command surface
 
 ```bash
-timer-tasks task add "Write docs" --category Work
+timer-tasks task add "Write docs"
 timer-tasks task list
-timer-tasks task move 0c1... --priority 1
 timer-tasks trigger add-app 0c1... com.apple.Safari
 timer-tasks trigger add-window 0c1... com.microsoft.VSCode --title "timer-tasks-mac"
 timer-tasks daemon
