@@ -1,6 +1,7 @@
 use accessibility::{AXUIElement, AXUIElementAttributes};
 use clap::{Parser, Subcommand};
 use objc2_app_kit::NSWorkspace;
+use objc2_foundation::{NSDate, NSRunLoop};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -110,10 +111,10 @@ fn main() {
         }
         Commands::Daemon => loop {
             let detected = return_front_title();
+            let until = NSDate::dateWithTimeIntervalSinceNow(1.0);
+            NSRunLoop::currentRunLoop().runUntilDate(&until);
             let Ok(detect) = detected else {
                 println!("detect is bad");
-                std::thread::sleep(std::time::Duration::from_secs(1));
-
                 continue;
             };
             println!("{}", detect.title);
@@ -148,7 +149,6 @@ fn main() {
             if should_write {
                 write_json(&mut app_state);
             }
-            std::thread::sleep(std::time::Duration::from_secs(1));
         },
     }
 }
@@ -191,10 +191,10 @@ fn return_front_title() -> Result<DetectedWindow, accessibility::Error> {
         Err(_) => "".to_string(),
     };
     println!(
-        "pid={} bundle_id={} title={:?}",
+        "pid={} bundle_id={} title={}",
         app.processIdentifier(),
         bundle_id,
-        title
+        title.to_string()
     );
     println!("{title:?} succ");
     return Ok(DetectedWindow {
