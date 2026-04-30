@@ -1,13 +1,15 @@
 use accessibility::{AXUIElement, AXUIElementAttributes};
 use clap::{Parser, Subcommand};
+use directories::ProjectDirs;
 use objc2_app_kit::NSWorkspace;
 use objc2_foundation::{NSDate, NSRunLoop};
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Default, Serialize, Deserialize)]
 struct AppState {
     tasks: Vec<Task>,
     started_task: Option<StartedTask>,
@@ -50,10 +52,19 @@ struct DetectedWindow {
 }
 fn main() {
     let cli = Cli::parse();
-    let text = fs::read_to_string("tasks.json").expect("failed to read tasks.json");
-    let mut app_state: AppState = serde_json::from_str(&text).unwrap();
+    let dir = ProjectDirs::from("com", "adrianwill", "project-progress").unwrap();
+    let path = dir.data_dir();
+    let tasks = path.join("tasks.json");
+    fs::create_dir_all(path).expect("failed ot create app data directory");
+    let mut app_state = match fs::read_to_string(&tasks) {
+        Ok(text) => serde_json::from_str(&text).expect("failed to parse tasks.json"),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => AppState::default(),
+        Err(err) => panic!("failed to read tasks.json: {err}"),
+    };
     match cli.command {
         Commands::Add { name } => {
+            let first = return_front_title();
+            wait_one_second();
             app_state.tasks.push(Task {
                 id: Uuid::new_v4().to_string(),
                 name: name,
@@ -63,8 +74,7 @@ fn main() {
                     title: "".to_string(),
                 },
             });
-            let serialized = serde_json::to_string(&app_state).unwrap();
-            fs::write("tasks.json", serialized).expect("failed to write tasks.json");
+            write_json(&tasks, &mut app_state);
         }
         Commands::List => {
             for task in &app_state.tasks {
@@ -90,8 +100,7 @@ fn main() {
         }
         Commands::Daemon => loop {
             let detected = return_front_title();
-            let until = NSDate::dateWithTimeIntervalSinceNow(1.0);
-            NSRunLoop::currentRunLoop().runUntilDate(&until);
+            wait_one_second();
             let Ok(detect) = detected else {
                 println!("detect is bad");
                 continue;
@@ -126,11 +135,15 @@ fn main() {
                 });
             };
             if should_write {
-                let serialized = serde_json::to_string(&app_state).unwrap();
-                fs::write("tasks.json", serialized).expect("failed to write tasks.json");
+                write_json(&tasks, &mut app_state);
             }
         },
     }
+}
+
+fn wait_one_second() {
+    let until = NSDate::dateWithTimeIntervalSinceNow(1.0);
+    NSRunLoop::currentRunLoop().runUntilDate(&until);
 }
 
 fn add_elapsed_to_task(app_state: &mut AppState) {
@@ -170,8 +183,14 @@ fn return_front_title() -> Result<DetectedWindow, accessibility::Error> {
         Ok(title) => title.to_string(),
         Err(_) => "".to_string(),
     };
+    println!("{},{}", bundle_id, title);
     return Ok(DetectedWindow {
         app: bundle_id.to_string(),
         title,
     });
+}
+
+fn write_json(path: &PathBuf, app_state: &mut AppState) {
+    let serialized = serde_json::to_string(&app_state).unwrap();
+    fs::write(path, serialized).expect("failed to write tasks.json");
 }

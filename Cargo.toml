@@ -7,6 +7,7 @@ edition = "2024"
 accessibility = "0.2.0"
 accessibility-sys = "0.2.0"
 clap = { version = "4.6.0", features = ["derive"] }
+directories = "6.0.0"
 objc2 = "0.6.4"
 objc2-app-kit = { version = "0.3.2", features = ["NSWorkspace", "NSRunningApplication"] }
 objc2-foundation = "0.3.2"
