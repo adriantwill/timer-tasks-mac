@@ -25,7 +25,7 @@ struct Task {
     id: String,
     name: String,
     time: u64,
-    trigger: Trigger,
+    trigger: Vec<Trigger>,
 }
 #[derive(Serialize, Deserialize)]
 struct Trigger {
@@ -43,7 +43,7 @@ enum Commands {
     Add { name: String },
     List,
     Status,
-    Test,
+    Edit { name: String, app: String },
     Daemon,
 }
 struct DetectedWindow {
@@ -77,20 +77,36 @@ fn main() {
                 }
                 wait_one_second();
             };
-            app_state.tasks.push(Task {
-                id: Uuid::new_v4().to_string(),
-                name: name,
-                time: 0,
-                trigger: Trigger {
-                    app: trigger_app.app.to_string(),
-                    title: trigger_app.title.to_string(),
-                },
-            });
             if let Some(task) = app_state.tasks.iter().find(|task| {
-                task.trigger.app == trigger_app.app && task.trigger.title == trigger_app.title
+                task.trigger.iter().any(|trigger| {
+                    trigger.app == trigger_app.app
+                        && (trigger_app.title.contains(&trigger.title)
+                            || trigger.title.contains(&trigger_app.title))
+                })
             }) {
                 println!("{} already has that app and title", task.name);
             } else {
+                if let Some(task) = app_state.tasks.iter_mut().find(|task| task.name == name) {
+                    if task.trigger.iter().any(|task| task.app == trigger_app.app) {
+                        println!("only 1 trigger per app");
+                        return;
+                    } else {
+                        task.trigger.push(Trigger {
+                            app: trigger_app.app.to_string(),
+                            title: trigger_app.title.to_string(),
+                        });
+                    }
+                } else {
+                    app_state.tasks.push(Task {
+                        id: Uuid::new_v4().to_string(),
+                        name: name,
+                        time: 0,
+                        trigger: vec![Trigger {
+                            app: trigger_app.app.to_string(),
+                            title: trigger_app.title.to_string(),
+                        }],
+                    });
+                }
                 write_json(&tasks, &mut app_state);
             }
         }
@@ -111,11 +127,7 @@ fn main() {
                 println!("{}: {} seconds ({})", task.name, task_time, progress);
             }
         }
-        Commands::Test => {
-            if let Err(err) = return_front_title() {
-                println!("{err:?} err");
-            }
-        }
+        Commands::Edit { name, app } => {}
         Commands::Daemon => loop {
             let Ok(detect) = return_front_title() else {
                 println!("detect is bad");
@@ -126,7 +138,13 @@ fn main() {
             let curr_task_id = app_state
                 .tasks
                 .iter()
-                .find(|task| task.trigger.app == detect.app && task.trigger.title == detect.title)
+                .find(|task| {
+                    task.trigger.iter().any(|trigger| {
+                        trigger.app == detect.app
+                            && (detect.title.contains(&trigger.title)
+                                || trigger.title.contains(&detect.title))
+                    })
+                })
                 .map(|task| task.id.clone());
 
             let prev_task_id = app_state
