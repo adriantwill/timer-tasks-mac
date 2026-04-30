@@ -4,9 +4,9 @@ use directories::ProjectDirs;
 use objc2_app_kit::NSWorkspace;
 use objc2_foundation::{NSDate, NSRunLoop};
 use serde::{Deserialize, Serialize};
-use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::{fs, task};
 use uuid::Uuid;
 
 #[derive(Default, Serialize, Deserialize)]
@@ -40,10 +40,16 @@ struct Cli {
 }
 #[derive(Subcommand, Debug)]
 enum Commands {
-    Add { name: String },
+    Add {
+        name: String,
+    },
     List,
     Status,
-    Edit { name: String, app: String },
+    Edit {
+        name: String,
+        app: String,
+        title: String,
+    },
     Daemon,
 }
 struct DetectedWindow {
@@ -127,7 +133,21 @@ fn main() {
                 println!("{}: {} seconds ({})", task.name, task_time, progress);
             }
         }
-        Commands::Edit { name, app } => {}
+        Commands::Edit { name, app, title } => {
+            if let Some(task) = app_state.tasks.iter_mut().find(|task| task.name == name) {
+                if let Some(trigger) = task
+                    .trigger
+                    .iter_mut()
+                    .find(|trigger_app| trigger_app.app == app)
+                {
+                    trigger.title = title
+                } else {
+                    println!("{} app not found", app)
+                }
+            } else {
+                println!("{} project not found", name)
+            }
+        }
         Commands::Daemon => loop {
             let Ok(detect) = return_front_title() else {
                 println!("detect is bad");
