@@ -63,18 +63,36 @@ fn main() {
     };
     match cli.command {
         Commands::Add { name } => {
-            let first = return_front_title();
-            wait_one_second();
+            let Ok(inital_app) = return_front_title() else {
+                println!("detect is bad");
+                return;
+            };
+            let trigger_app = loop {
+                let Ok(current_app) = return_front_title() else {
+                    println!("detect is bad");
+                    return;
+                };
+                if current_app.title != inital_app.title || current_app.app != inital_app.app {
+                    break current_app;
+                }
+                wait_one_second();
+            };
             app_state.tasks.push(Task {
                 id: Uuid::new_v4().to_string(),
                 name: name,
                 time: 0,
                 trigger: Trigger {
-                    app: "".to_string(),
-                    title: "".to_string(),
+                    app: trigger_app.app.to_string(),
+                    title: trigger_app.title.to_string(),
                 },
             });
-            write_json(&tasks, &mut app_state);
+            if let Some(task) = app_state.tasks.iter().find(|task| {
+                task.trigger.app == trigger_app.app && task.trigger.title == trigger_app.title
+            }) {
+                println!("{} already has that app and title", task.name);
+            } else {
+                write_json(&tasks, &mut app_state);
+            }
         }
         Commands::List => {
             for task in &app_state.tasks {
@@ -99,12 +117,11 @@ fn main() {
             }
         }
         Commands::Daemon => loop {
-            let detected = return_front_title();
-            wait_one_second();
-            let Ok(detect) = detected else {
+            let Ok(detect) = return_front_title() else {
                 println!("detect is bad");
                 continue;
             };
+            wait_one_second();
             println!("{}", detect.title);
             let curr_task_id = app_state
                 .tasks
