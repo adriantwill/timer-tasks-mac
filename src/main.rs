@@ -50,6 +50,10 @@ enum Commands {
         app: String,
         title: String,
     },
+    Delete {
+        name: String,
+        app: Option<String>,
+    },
     Daemon,
 }
 struct DetectedWindow {
@@ -148,6 +152,18 @@ fn main() {
                 println!("{} project not found", name)
             }
         }
+        Commands::Delete { name, app } => {
+            if let Some(task) = app_state.tasks.iter_mut().find(|task| task.name == name) {
+                if let Some(app) = app {
+                    task.trigger.retain(|trigger| trigger.app != app);
+                } else {
+                    app_state.tasks.retain(|task| task.name != name);
+                }
+            } else {
+                println!("{} project not found", name)
+            }
+        }
+
         Commands::Daemon => loop {
             let Ok(detect) = return_front_title() else {
                 println!("detect is bad");
