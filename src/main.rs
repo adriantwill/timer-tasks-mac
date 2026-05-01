@@ -1,12 +1,12 @@
 use accessibility::{AXUIElement, AXUIElementAttributes};
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use directories::ProjectDirs;
 use objc2_app_kit::NSWorkspace;
 use objc2_foundation::{NSDate, NSRunLoop};
 use serde::{Deserialize, Serialize};
+use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::{fs, task};
 use uuid::Uuid;
 
 #[derive(Default, Serialize, Deserialize)]
@@ -43,12 +43,11 @@ enum Commands {
     Add {
         name: String,
     },
-    List,
     Status,
     Edit {
         name: String,
-        app: String,
-        title: String,
+        #[command(flatten)]
+        detected: DetectedWindow,
     },
     Delete {
         name: String,
@@ -56,6 +55,7 @@ enum Commands {
     },
     Daemon,
 }
+#[derive(Args, Debug)]
 struct DetectedWindow {
     app: String,
     title: String,
@@ -87,42 +87,29 @@ fn main() {
                 }
                 wait_one_second();
             };
-            if let Some(task) = app_state.tasks.iter().find(|task| {
-                task.trigger.iter().any(|trigger| {
-                    trigger.app == trigger_app.app
-                        && (trigger_app.title.contains(&trigger.title)
-                            || trigger.title.contains(&trigger_app.title))
-                })
-            }) {
-                println!("{} already has that app and title", task.name);
+            if let Some(task) = matching_task_id(&app_state.tasks, &trigger_app) {
+                println!("{} already has that app and title", task);
             } else {
+                let new_trigger = Trigger {
+                    app: trigger_app.app.to_string(),
+                    title: trigger_app.title.to_string(),
+                };
                 if let Some(task) = app_state.tasks.iter_mut().find(|task| task.name == name) {
                     if task.trigger.iter().any(|task| task.app == trigger_app.app) {
-                        println!("only 1 trigger per app");
+                        println!("that app has already been added");
                         return;
                     } else {
-                        task.trigger.push(Trigger {
-                            app: trigger_app.app.to_string(),
-                            title: trigger_app.title.to_string(),
-                        });
+                        task.trigger.push(new_trigger);
                     }
                 } else {
                     app_state.tasks.push(Task {
                         id: Uuid::new_v4().to_string(),
                         name: name,
                         time: 0,
-                        trigger: vec![Trigger {
-                            app: trigger_app.app.to_string(),
-                            title: trigger_app.title.to_string(),
-                        }],
+                        trigger: vec![new_trigger],
                     });
                 }
                 write_json(&tasks, &mut app_state);
-            }
-        }
-        Commands::List => {
-            for task in &app_state.tasks {
-                println!("{}: {}", task.id, task.name);
             }
         }
         Commands::Status => {
@@ -137,19 +124,16 @@ fn main() {
                 println!("{}: {} seconds ({})", task.name, task_time, progress);
             }
         }
-        Commands::Edit { name, app, title } => {
-            if let Some(task) = app_state.tasks.iter_mut().find(|task| task.name == name) {
-                if let Some(trigger) = task
-                    .trigger
-                    .iter_mut()
-                    .find(|trigger_app| trigger_app.app == app)
-                {
-                    trigger.title = title
-                } else {
-                    println!("{} app not found", app)
-                }
+        Commands::Edit { name, detected } => {
+            if matching_task_id(&app_state.tasks, &detected).is_some() {
+                println!("{} already has that app and title", name);
             } else {
-                println!("{} project not found", name)
+                if let Some(trigger) = tasks_trigger(&mut app_state.tasks, &detected, name) {
+                    trigger.title = detected.title;
+                    write_json(&tasks, &mut app_state);
+                } else {
+                    println!("{} app or project not found", detected.app)
+                }
             }
         }
         Commands::Delete { name, app } => {
@@ -159,6 +143,7 @@ fn main() {
                 } else {
                     app_state.tasks.retain(|task| task.name != name);
                 }
+                write_json(&tasks, &mut app_state);
             } else {
                 println!("{} project not found", name)
             }
@@ -171,18 +156,7 @@ fn main() {
             };
             wait_one_second();
             println!("{}", detect.title);
-            let curr_task_id = app_state
-                .tasks
-                .iter()
-                .find(|task| {
-                    task.trigger.iter().any(|trigger| {
-                        trigger.app == detect.app
-                            && (detect.title.contains(&trigger.title)
-                                || trigger.title.contains(&detect.title))
-                    })
-                })
-                .map(|task| task.id.clone());
-
+            let curr_task_id = matching_task_id(&app_state.tasks, &detect);
             let prev_task_id = app_state
                 .started_task
                 .as_ref()
@@ -264,4 +238,28 @@ fn return_front_title() -> Result<DetectedWindow, accessibility::Error> {
 fn write_json(path: &PathBuf, app_state: &mut AppState) {
     let serialized = serde_json::to_string(&app_state).unwrap();
     fs::write(path, serialized).expect("failed to write tasks.json");
+}
+fn tasks_trigger<'a>(
+    tasks: &'a mut [Task],
+    detect: &DetectedWindow,
+    name: String,
+) -> Option<&'a mut Trigger> {
+    tasks
+        .iter_mut()
+        .find(|task| task.name == name)
+        .unwrap()
+        .trigger
+        .iter_mut()
+        .find(|new| new.app == detect.app)
+}
+
+fn matching_task_id(tasks: &[Task], detect: &DetectedWindow) -> Option<String> {
+    tasks
+        .iter()
+        .find(|task| {
+            task.trigger
+                .iter()
+                .any(|trigger| trigger.app == detect.app && detect.title.contains(&trigger.title))
+        })
+        .map(|task| task.id.clone())
 }
