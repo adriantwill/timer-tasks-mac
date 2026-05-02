@@ -2,449 +2,299 @@
 
 ## Goal
 
-Port prior macOS SwiftUI app into a Rust binary without losing core behavior:
+Port the old macOS SwiftUI timer app into one Rust binary.
 
-- task list
-- triggers by app bundle id
-- triggers by window title
+Keep the core behavior:
+
+- tasks with elapsed time
+- apps/windows that activate a task
 - active task timer
 - auto-switch when frontmost app/window changes
-- persistent local storage
+- persistent local JSON storage
 
-The Rust binary should do 2 jobs:
+Do not preserve the GUI shape. The Rust app is allowed to feel like a small personal CLI tool.
 
-- CLI for CRUD/admin
-- background daemon for auto timer switching
+## Previous Swift App
 
-Current Rust app already has the core `clap` CLI working in [src/main.rs](/Users/adrianwill/Dev/timer-tasks-mac/src/main.rs). This doc tracks remaining work from here.
-
-## What the Swift app actually did
-
-Final Swift impl in git history (`5a17e50`) had 3 main parts:
+The Swift version had 3 main parts:
 
 1. Data models
    - `TimerTask`
    - `TaskTrigger`
 2. Runtime services
-   - `TimerManager`: increments active task every second
-   - `AppMonitor`: watches frontmost app + focused window title, auto-starts/stops tasks
-3. UI
+   - `TimerManager`: increments active task over time
+   - `AppMonitor`: watches frontmost app + focused window title
+3. UI workflows
    - list tasks
    - add task
    - add trigger from installed app
    - add trigger from running window title
+   - manually start/stop task
 
-The important part for Rust is not the GUI. It is:
+Important behavior to preserve:
 
-- domain model
-- CRUD surface
-- monitor loop
-- timer runtime
+- a task can have one or more app/window matches
+- a matching app/window starts that task
+- switching apps/windows can switch active task
+- no match stops active tracking
+- elapsed time survives restart
 
-## Core domain to preserve
+## Current Rust CLI Direction
 
-### `TimerTask`
+Keep the current flat CLI style.
 
-Needs:
-
-- `id: Uuid`
-- `title: String`
-- `target_time_secs: Option<i64>`
-- `elapsed_secs: i64`
-- `is_manual_complete: bool`
-- `created_at`
-- `updated_at`
-
-### `TaskTrigger`
-
-Needs:
-
-- `id: Uuid`
-- `task_id: Uuid`
-- `bundle_id: String`
-- `title: Option<String>`
-- `is_exact_title_match: bool`
-- `previous_active: bool`
-
-Matching rules from Swift:
-
-- if `title == None`, match only on bundle id
-- if `title != None`, match bundle id + title
-- exact or contains match based on `is_exact_title_match`
-- optional guard: only match if same task was previously active when `previous_active == true`
-
-## Swift concept -> Rust concept
-
-| Swift app | Rust CLI |
-|---|---|
-| `SwiftData` models | SQLite or JSON-backed structs |
-| `ModelContext` | repository layer |
-| `TimerManager.shared` | app state service with active task + ticker loop |
-| `AppMonitor.shared` | macOS monitor service |
-| SwiftUI list/forms | `clap` subcommands |
-| scene lifecycle save | explicit save after mutations + periodic flush |
-| app picker / window picker | CLI args + helper commands to inspect apps/windows |
-
-## Best Rust shape
-
-Use 5 layers.
-
-### 1. `model`
-
-Pure structs + matching logic.
-
-Suggested files:
-
-- `src/model/task.rs`
-- `src/model/trigger.rs`
-
-### 2. `store`
-
-Persistence layer.
-
-Two viable options:
-
-1. SQLite
-   - best for long-term
-   - easier filtering/sorting
-   - safer writes
-2. JSON file
-   - fastest to build
-   - enough for early CLI
-
-Recommendation: start JSON, move to SQLite only if needed.
-
-Reason: old Swift app was small, single-user, local-only.
-
-Suggested path:
-
-- `~/Library/Application Support/timer-tasks-mac/data.json`
-
-That mirrors the Swift app using app support storage.
-
-### 3. `runtime`
-
-Holds:
-
-- active task state
-- timer tick loop
-- app/window monitor loop
-- trigger evaluation
-
-Suggested files:
-
-- `src/runtime/timer.rs`
-- `src/runtime/monitor.rs`
-- `src/runtime/matcher.rs`
-
-### 4. `cli`
-
-Maps user commands to store/runtime actions.
-
-Suggested files:
-
-- `src/cli.rs`
-- `src/main.rs`
-
-### 5. `daemon`
-
-Long-running background entrypoint.
-
-Suggested file:
-
-- `src/daemon.rs`
-
-## Binary mode split
-
-The binary should support 2 operating modes.
-
-### Mode 1: CLI admin
-
-Short-lived commands for users to manage data.
-
-Examples:
+Current command surface:
 
 ```bash
-timer-tasks task add "Design App"
-timer-tasks task list
-timer-tasks task delete <task-id>
-timer-tasks trigger add-app <task-id> com.microsoft.VSCode
-```
-
-### Mode 2: daemon
-
-Long-running background process.
-
-Example:
-
-```bash
+timer-tasks add <name>
+timer-tasks status
+timer-tasks edit <name> <app> <title>
+timer-tasks delete <name> [app]
+timer-tasks detect
 timer-tasks daemon
 ```
 
-This process should:
-
-- load persisted data
-- detect frontmost app/window
-- match triggers
-- start/stop task timers
-- persist changes
-
-## CLI feature mapping
-
-### CRUD
-
-Swift GUI actions become commands like:
+Do not switch to nested commands like:
 
 ```bash
-timer-tasks task add "Design App"
-timer-tasks task list
-timer-tasks task delete <task-id>
-timer-tasks trigger add-app <task-id> com.microsoft.VSCode
-timer-tasks trigger add-window <task-id> com.microsoft.VSCode --title "Linear"
+timer-tasks task add ...
+timer-tasks trigger add-window ...
 ```
 
-### Manual timing
+Those are more formal, but not needed for this project right now.
 
-Replaces clicking row play/stop:
+## Current Workflow
+
+### Add
 
 ```bash
-timer-tasks start <task-id>
-timer-tasks stop
+timer-tasks add "Write docs"
+```
+
+Current intended behavior:
+
+1. Read current frontmost app/window.
+2. Wait until user switches to a different app/window.
+3. Use that new app/window as the trigger.
+4. If task exists, add trigger to it.
+5. If task does not exist, create task with that trigger.
+
+This replaces the Swift GUI flow where the user picked an app/window from UI.
+
+### Status
+
+```bash
 timer-tasks status
 ```
 
-### Auto tracking daemon
+Shows all tasks and elapsed seconds.
 
-Replaces `AppMonitor.startMonitoring()` and `TimerManager.shared` running in memory:
+This replaces the Swift task list.
+
+### Edit
+
+```bash
+timer-tasks edit "Write docs" com.apple.Safari "Docs"
+```
+
+Changes the saved window title for an existing app trigger on a task.
+
+This replaces editing trigger details in the GUI.
+
+### Delete
+
+```bash
+timer-tasks delete "Write docs"
+timer-tasks delete "Write docs" com.apple.Safari
+```
+
+Without app: delete whole task.
+
+With app: delete only that task's app trigger.
+
+### Daemon
 
 ```bash
 timer-tasks daemon
 ```
 
-This long-running command should:
+Runs forever:
 
-- poll frontmost app every 1s
-- read focused window title
-- compare against triggers
-- switch active task when matched
-- stop timer when no task matches
-- persist elapsed time periodically
+1. Read frontmost app/window.
+2. Find first matching task.
+3. If match changed, stop old task and start new one.
+4. If no match, stop active task.
+5. Persist elapsed time.
 
-### Discovery helpers
+This replaces Swift `AppMonitor` + `TimerManager`.
 
-Swift used open panels and accessibility APIs to pick apps/windows. CLI should expose inspect commands instead:
+### Detect
 
 ```bash
-timer-tasks inspect frontmost
-timer-tasks inspect windows --bundle-id com.microsoft.VSCode
-timer-tasks inspect apps
+timer-tasks detect
 ```
 
-## macOS integration details
+Prints the current frontmost app bundle ID and focused window title once.
 
-The Swift app relied on:
+Use this before `add` or `daemon` to verify macOS detection and Accessibility permissions.
 
-- `NSWorkspace.shared.frontmostApplication`
-- Accessibility APIs for focused window title
+## Data Model
 
-Rust CLI will need same macOS-only capabilities.
+Current simple model is enough for now:
 
-Practical approach:
+```rust
+struct AppState {
+    tasks: Vec<Task>,
+    started_task: Option<StartedTask>,
+}
 
-1. Keep CLI cross-platform at domain/store layer
-2. Put monitoring behind `cfg(target_os = "macos")`
-3. Implement mac monitor using one of:
-   - AppleScript via `osascript` for quick bootstrap
-   - direct CoreFoundation / AX APIs via crates or FFI for robust impl
+struct Task {
+    id: String,
+    name: String,
+    time: u64,
+    trigger: Vec<Trigger>,
+}
 
-Recommendation:
+struct Trigger {
+    app: String,
+    title: String,
+}
 
-1. bootstrap with `osascript`
-2. replace with AX FFI later if reliability/perf needs it
-
-Reason: fastest path to parity.
-
-Possible helper calls:
-
-- frontmost app bundle id via AppleScript/System Events
-- front window title via AppleScript when app exposes it
-- fallback to AX API later for stricter parity
-
-Risk: AppleScript window-title access is less reliable across apps than AX.
-
-## Rust crates worth using
-
-Minimal set:
-
-- `clap` for CLI
-- `serde`
-- `serde_json`
-- `uuid`
-- `chrono`
-- `dirs`
-- `anyhow`
-
-Maybe later:
-
-- `rusqlite` if moving to SQLite
-- `tokio` if async daemon becomes useful
-- `tracing` + `tracing-subscriber` for daemon logs
-
-## Suggested data format
-
-If JSON:
-
-```json
-{
-  "tasks": [],
-  "triggers": [],
-  "active_task_id": null,
-  "active_started_at": null
+struct StartedTask {
+    task_id: String,
+    started_at: u64,
 }
 ```
 
-Important: do not store only accumulated `elapsed_secs`.
+This is smaller than the Swift model. That is fine while learning and building the core loop.
 
-Also store runtime timing metadata so daemon restart can recover sanely:
+Possible later fields from Swift:
 
-- `active_task_id`
-- `active_started_at`
-- `last_tick_at`
+- target time
+- manual complete flag
+- created/updated timestamps
+- exact title match vs contains match
+- app-only trigger with no title
+- trigger ID
 
-## Matching logic to port exactly
+Do not add these until the current behavior is solid.
 
-From Swift `AppMonitor`:
+Accepted differences from Swift for now:
 
-1. read frontmost bundle id
-2. read current window title
-3. load tasks
-4. first matching trigger wins
-5. if a different task matches, stop old timer and start new one
-6. if none match, stop active timer
+- no manual start/stop commands
+- no exact title match option
+- no `previous_active` trigger flag
+- fuzzy title matching is preferred
+- bad hand-edited JSON does not need full migration support yet
+- daemon logs can stay rough until behavior is stable
 
-First-match behavior matters. Keep it deterministic.
+## Matching Rule
 
-## Recommended implementation order
+Current matcher should be one function.
 
-### Phase 1
+Goal:
 
-Build non-daemon CLI:
+```rust
+fn matching_task_id(tasks: &[Task], detect: &DetectedWindow) -> Option<String>
+```
 
-- models
-- JSON store
-- task/trigger CRUD
-- `start`, `stop`, `status`
+Rules:
 
-### Phase 2
+1. First matching task wins.
+2. App must match exactly.
+3. Title match is fuzzy by design.
 
-Build daemon timing loop:
+Current accepted rule:
 
-- keep active task in persisted state
-- tick every second
-- flush every few seconds
-- restore active task on restart if desired
+```text
+trigger.app == detect.app && detect.title.contains(&trigger.title)
+```
 
-### Phase 3
+An empty trigger title can match any window title for that app. This is acceptable because duplicate tasks/triggers are prevented through the CLI, and hand-editing JSON is outside the main user path.
 
-Build macOS monitor:
+## Suggested File Shape Later
 
-- inspect frontmost app
-- inspect focused window title
-- trigger matching
-- auto-switch task
+Keep `src/main.rs` while learning if that helps.
 
-### Phase 4
-
-Hardening:
-
-- file locking
-- crash-safe writes
-- migration path JSON -> SQLite if needed
-- better logs
-
-### Phase 5
-
-Final optional quality-of-life features:
-
-- categories if grouping feels worth it later
-- manual task ordering / priority if trigger conflicts need it
-- friendlier task id prefixes in CLI output and lookup
-- inspect helpers for frontmost app / windows
-
-## Working Checklist
-
-Mark these off as each step is completed.
-
-- [ ] manual timer REPL
-  - commands: `start`, `stop`, `status`, `quit`
-  - goal: learn `Option`, `Duration`, `Instant`, loops, stdin
-- [ ] add task model
-  - create `Task` struct
-  - start timer for a named task
-  - hardcode tasks first if needed
-- [ ] persist tasks + elapsed time
-  - save/load JSON with `serde`
-  - make state survive restart
-- [x] move to real CLI commands
-  - keep `clap`
-  - add `task add`, `task list`, `start <id>`, `stop`, `status`
-- [x] add trigger CRUD
-- [ ] add long-running daemon loop
-  - add `daemon` command
-  - poll every second
-  - update timer state without stdin
-- [ ] add macOS detection
-  - first fake detector
-  - then real frontmost app/window detection
-
-## Proposed repo shape
+Split only when the file feels painful:
 
 ```text
 src/
   main.rs
-  cli.rs
-  app.rs
-  model/
-    mod.rs
-    task.rs
-    trigger.rs
-  store/
-    mod.rs
-    json_store.rs
-  runtime/
-    mod.rs
-    timer.rs
-    matcher.rs
-    monitor.rs
+  model.rs
+  store.rs
+  matcher.rs
+  macos.rs
 ```
 
-## Example command surface
+No need for a large architecture yet.
 
-```bash
-timer-tasks task add "Write docs"
-timer-tasks task list
-timer-tasks trigger add-app 0c1... com.apple.Safari
-timer-tasks trigger add-window 0c1... com.microsoft.VSCode --title "timer-tasks-mac"
-timer-tasks daemon
-timer-tasks status
-```
+## Swift GUI vs Rust CLI
 
-## Biggest behavior diffs vs Swift GUI
+| Swift GUI behavior | Rust CLI behavior |
+|---|---|
+| Visual task list | `status` |
+| Add task form | `add <name>` |
+| Pick app/window in UI | switch to app/window while `add` waits |
+| Edit trigger in UI | `edit <name> <app> <title>` |
+| Delete task/trigger in UI | `delete <name> [app]` |
+| Inspect current app/window | `detect` |
+| `TimerManager` in app memory | `daemon` loop |
+| `AppMonitor` using macOS APIs | `return_front_title()` |
+| SwiftData autosave | explicit JSON writes |
 
-- no visual task list; all task interaction becomes commands
-- no `NSOpenPanel`; bundle ids/titles must come from args or inspect commands
-- no SwiftData autosave; Rust must explicitly persist
-- no SwiftUI reactive state; CLI daemon owns runtime state
+## Progress
 
-## Bottom line
+- [x] basic task model
+- [x] JSON load/save
+- [x] flat `clap` CLI
+- [x] add task/trigger through current app switch workflow
+- [x] status output
+- [x] edit trigger title
+- [x] delete task or trigger
+- [x] detect current app/window
+- [x] basic daemon loop
+- [x] basic macOS frontmost app/window detection
+- [x] make matcher rule explicit and shared everywhere
+- [x] accept empty-title fuzzy matching
+- [x] accept no manual start/stop commands
+- [x] accept simplified trigger model for now
+- [x] accept rough daemon logs for now
+- [ ] add tests for matcher
+- [ ] reduce repeated lookup/save code
+- [ ] optionally make JSON parse errors print clearer message
 
-This is not really a GUI port problem. It is:
+## What To Do Next
 
-1. port data model
-2. build CLI CRUD surface with `clap`
-3. port trigger matcher
-4. port timer loop
-5. reimplement macOS foreground-window detection
-6. run all auto-tracking inside a daemon command
+1. Add matcher tests.
+   - App mismatch returns `None`.
+   - App match + title contains returns task ID.
+   - Empty title matches app-only behavior.
+   - First matching task wins.
 
-If done in that order, the Rust binary can reach feature parity with the old Swift app without needing any GUI layer.
+2. Clean small repeated code.
+   - `load_state(path)`
+   - `task_has_app_trigger(task, app)`
+   - `wait_for_front_change(initial)`
+   - maybe `find_task_mut(tasks, name)`
+
+3. Improve persistence errors.
+   - If `tasks.json` is missing, use empty state.
+   - If `tasks.json` has bad shape, print a clear error.
+   - Write after every successful mutation.
+
+4. Then improve daemon polish.
+   - Remove noisy debug prints or make them intentional logs.
+   - Save elapsed time on each tick or fixed interval.
+   - Keep behavior stable when no app/window title is available.
+
+## Bottom Line
+
+You are no longer trying to copy the Swift UI. You are keeping the old app's behavior and expressing it through your simpler CLI:
+
+1. `status` replaces the list UI.
+2. `add` plus app switching replaces picker UI.
+3. `edit` and `delete` replace trigger management UI.
+4. `daemon` replaces Swift runtime services.
+
+Next best work: add matcher tests and clean repeated lookup/save code.

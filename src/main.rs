@@ -6,6 +6,7 @@ use objc2_foundation::{NSDate, NSRunLoop};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
@@ -54,18 +55,23 @@ enum Commands {
         app: Option<String>,
     },
     Daemon,
+    Start,
+    Stop,
 }
 #[derive(Args, Debug)]
 struct DetectedWindow {
     app: String,
     title: String,
 }
+struct ProjectPaths {
+    data_dir: PathBuf,
+    tasks_json: PathBuf,
+    pid_file: PathBuf,
+}
 fn main() {
     let cli = Cli::parse();
-    let dir = ProjectDirs::from("com", "adrianwill", "project-progress").unwrap();
-    let path = dir.data_dir();
-    let tasks = path.join("tasks.json");
-    fs::create_dir_all(path).expect("failed ot create app data directory");
+    let tasks = project_path().tasks_json;
+    fs::create_dir_all(project_path().data_dir).expect("failed ot create app data directory");
     let mut app_state = match fs::read_to_string(&tasks) {
         Ok(text) => serde_json::from_str(&text).expect("failed to parse tasks.json"),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => AppState::default(),
@@ -128,7 +134,7 @@ fn main() {
             if matching_task_id(&app_state.tasks, &detected).is_some() {
                 println!("{} already has that app and title", name);
             } else {
-                if let Some(trigger) = tasks_trigger(&mut app_state.tasks, &detected, name) {
+                if let Some(trigger) = find_trigger_mut(&mut app_state.tasks, &detected, &name) {
                     trigger.title = detected.title;
                     write_json(&tasks, &mut app_state);
                 } else {
@@ -155,7 +161,6 @@ fn main() {
                 continue;
             };
             wait_one_second();
-            println!("{}", detect.title);
             let curr_task_id = matching_task_id(&app_state.tasks, &detect);
             let prev_task_id = app_state
                 .started_task
@@ -183,6 +188,29 @@ fn main() {
                 write_json(&tasks, &mut app_state);
             }
         },
+        Commands::Start => {
+            fs::read(project_path().pid_file);
+            // if project_path().join("project-planner.pid")
+            let exe = std::env::current_exe().expect("failed to find current executable");
+            let child = Command::new(exe)
+                .arg("daemon")
+                .spawn()
+                .expect("failed to launch");
+            fs::write(project_path().pid_file, child.id().to_string())
+                .expect("failed to write pid file");
+        }
+        Commands::Stop => {}
+    }
+}
+fn project_path() -> ProjectPaths {
+    let data_dir = ProjectDirs::from("com", "adrianwill", "project-progress")
+        .unwrap()
+        .data_dir()
+        .to_path_buf();
+    ProjectPaths {
+        tasks_json: data_dir.join("tasks.json"),
+        pid_file: data_dir.join("project-planner.pid"),
+        data_dir,
     }
 }
 
@@ -228,7 +256,6 @@ fn return_front_title() -> Result<DetectedWindow, accessibility::Error> {
         Ok(title) => title.to_string(),
         Err(_) => "".to_string(),
     };
-    println!("{},{}", bundle_id, title);
     return Ok(DetectedWindow {
         app: bundle_id.to_string(),
         title,
@@ -239,18 +266,14 @@ fn write_json(path: &PathBuf, app_state: &mut AppState) {
     let serialized = serde_json::to_string(&app_state).unwrap();
     fs::write(path, serialized).expect("failed to write tasks.json");
 }
-fn tasks_trigger<'a>(
+
+fn find_trigger_mut<'a>(
     tasks: &'a mut [Task],
     detect: &DetectedWindow,
-    name: String,
+    name: &str,
 ) -> Option<&'a mut Trigger> {
-    tasks
-        .iter_mut()
-        .find(|task| task.name == name)
-        .unwrap()
-        .trigger
-        .iter_mut()
-        .find(|new| new.app == detect.app)
+    let task = tasks.iter_mut().find(|task| task.name == name)?;
+    task.trigger.iter_mut().find(|new| new.app == detect.app)
 }
 
 fn matching_task_id(tasks: &[Task], detect: &DetectedWindow) -> Option<String> {
@@ -262,4 +285,24 @@ fn matching_task_id(tasks: &[Task], detect: &DetectedWindow) -> Option<String> {
                 .any(|trigger| trigger.app == detect.app && detect.title.contains(&trigger.title))
         })
         .map(|task| task.id.clone())
+}
+
+#[test]
+fn app_mismatch_returns_none() {
+    let tasks = vec![Task {
+        id: "1".to_string(),
+        name: "Work".to_string(),
+        time: 0,
+        trigger: vec![Trigger {
+            app: "com.apple.Safari".to_string(),
+            title: "Docs".to_string(),
+        }],
+    }];
+
+    let detect = DetectedWindow {
+        app: "com.apple.Terminal".to_string(),
+        title: "Docs".to_string(),
+    };
+
+    assert_eq!(matching_task_id(&tasks, &detect), None);
 }

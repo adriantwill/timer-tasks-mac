@@ -3,6 +3,10 @@ name = "timer-tasks-mac"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "timer-tasks"
+path = "src/main.rs"
+
 [dependencies]
 accessibility = "0.2.0"
 accessibility-sys = "0.2.0"
