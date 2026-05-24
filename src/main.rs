@@ -189,8 +189,10 @@ fn main() {
             }
         },
         Commands::Start => {
-            fs::read(project_path().pid_file);
-            // if project_path().join("project-planner.pid")
+            if fs::read_to_string(project_path().pid_file).is_ok() {
+                return;
+            };
+
             let exe = std::env::current_exe().expect("failed to find current executable");
             let child = Command::new(exe)
                 .arg("daemon")
