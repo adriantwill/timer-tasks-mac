@@ -166,7 +166,7 @@ fn main() {
                 .started_task
                 .as_ref()
                 .map(|started| started.task_id.clone());
-
+            //undo change
             let changed = prev_task_id != curr_task_id;
 
             if prev_task_id.is_some() {
