@@ -58,6 +58,7 @@ enum Commands {
     Start,
     Stop,
 }
+//move derive here
 #[derive(Args, Debug)]
 struct DetectedWindow {
     app: String,
