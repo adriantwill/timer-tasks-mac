@@ -59,6 +59,7 @@ enum Commands {
     Stop,
 }
 //move derive here
+//testing wait_one_second
 #[derive(Args, Debug)]
 struct DetectedWindow {
     app: String,
