@@ -39,6 +39,7 @@ struct Cli {
     #[command(subcommand)]
     command: Commands,
 }
+
 #[derive(Subcommand, Debug)]
 enum Commands {
     Add {
